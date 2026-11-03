@@ -258,27 +258,13 @@
                 <ItemsControl x:Name="Rows" ItemsSource="{Binding Rows}" Focusable="False" />
             </StackPanel>
         </Border>
-        <!-- "Working" orbit: a comet circling the card border while any session here is active,
-             driven like a drift car: fast on straights, smooth braking into bends where the head
-             glows (Flash) and a tyre mark is left on the bend (Mark). Head = short bright dash; tail =
-             longer faint dash lagging behind it. -->
-        <Rectangle x:Name="OrbitTail" RadiusX="9" RadiusY="9" StrokeThickness="1.5" IsHitTestVisible="False"
-                   Stroke="{DynamicResource Hud.Accent}" Opacity="0.28" StrokeDashCap="Round" Visibility="Collapsed"
-                   b:Orbit.Length="120" b:Orbit.Lag="84" />
-        <!-- tyre mark: lights up on each bend as the car exits, then fades behind it -->
-        <Rectangle x:Name="OrbitMark" RadiusX="9" RadiusY="9" StrokeThickness="2.2" IsHitTestVisible="False"
-                   Stroke="{DynamicResource Hud.Accent}" StrokeDashCap="Round" Opacity="0" Visibility="Collapsed"
-                   b:Orbit.Length="1" b:Orbit.Mark="True" />
-        <Rectangle x:Name="OrbitHead" RadiusX="9" RadiusY="9" StrokeThickness="1.5" IsHitTestVisible="False"
-                   Stroke="{DynamicResource Hud.Accent}" StrokeDashCap="Round" Visibility="Collapsed"
-                   b:Orbit.Length="36" b:Orbit.Flash="True" />
+        <!-- "Working": a tiny drift car laps the card border while any session here is active -->
+        <Canvas x:Name="Race" b:RaceTrack.Radius="9" Visibility="Collapsed" />
         </Grid>
         </StackPanel>
         <DataTemplate.Triggers>
             <DataTrigger Binding="{Binding IsWorking}" Value="True">
-                <Setter TargetName="OrbitTail" Property="Visibility" Value="Visible" />
-                <Setter TargetName="OrbitHead" Property="Visibility" Value="Visible" />
-                <Setter TargetName="OrbitMark" Property="Visibility" Value="Visible" />
+                <Setter TargetName="Race" Property="Visibility" Value="Visible" />
             </DataTrigger>
             <!-- no divider above the first block -->
             <DataTrigger Binding="{Binding RelativeSource={RelativeSource PreviousData}}" Value="{x:Null}">
@@ -293,9 +279,7 @@
             </DataTrigger>
             <DataTrigger Binding="{Binding NeedsDecision}" Value="True">
                 <Setter TargetName="GroupDot" Property="Visibility" Value="Visible" />
-                <Setter TargetName="OrbitTail" Property="Visibility" Value="Collapsed" />
-                <Setter TargetName="OrbitHead" Property="Visibility" Value="Collapsed" />
-                <Setter TargetName="OrbitMark" Property="Visibility" Value="Collapsed" />
+                <Setter TargetName="Race" Property="Visibility" Value="Collapsed" />
                 <Setter TargetName="DecisionLine" Property="Visibility" Value="Visible" />
                 <Setter TargetName="Card" Property="BorderBrush" Value="{DynamicResource Hud.Accent.Border}" />
                 <DataTrigger.EnterActions>
