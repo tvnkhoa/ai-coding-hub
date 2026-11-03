@@ -37,7 +37,7 @@ public static class RaceTrack
     private const double PreSwing = 0.4;        // share of MaxYaw already out when braking ends
     private const double YawDecay = 0.2;        // s: how fast the swing dies after the bend
     private const double FishtailPeriod = 0.55; // s: one counter-steer wobble out of the bend
-    private const double TrailLength = 46;      // px
+    private const double TrailLength = 92;      // px: a light-cycle style neon trail
 
     private static readonly Dictionary<Canvas, Track> Active = new();
     private static readonly Stopwatch Clock = Stopwatch.StartNew();
@@ -118,13 +118,14 @@ public static class RaceTrack
         {
             _canvas = canvas;
 
-            _trail = new Path { StrokeThickness = 1.6, StrokeDashCap = PenLineCap.Round, Opacity = 0.3 };
-            _trail.SetResourceReference(Shape.StrokeProperty, "Hud.Accent");
+            _trail = new Path { StrokeThickness = 1.8, StrokeDashCap = PenLineCap.Round, Opacity = 0.6 };
+            _trail.SetResourceReference(Shape.StrokeProperty, "Hud.Race");
+            _trail.Effect = _trailGlow;
 
             // Top-down car pointing along +X, centred on the origin: body, cabin, four wheels.
             _car = new Canvas { Width = 0, Height = 0 };
-            AddRect(_car, -5.5, -3, 11, 6, 2, "Hud.Accent");
-            AddRect(_car, -1.2, -2, 3.2, 4, 1, "Hud.OnAccent", opacity: 0.55);   // windscreen / cabin
+            AddRect(_car, -5.5, -3, 11, 6, 2, "Hud.Race");
+            AddRect(_car, -1.2, -2, 3.2, 4, 1, "Hud.Race.Cabin", opacity: 0.8);   // windscreen / cabin
             foreach (var (x, y) in new[] { (2.2, -4.1), (2.2, 2.7), (-4.6, -4.1), (-4.6, 2.7) })
             {
                 AddRect(_car, x, y, 2.6, 1.4, 0.6, "Hud.Foreground");
@@ -134,9 +135,14 @@ public static class RaceTrack
             group.Children.Add(_translate);
             _car.RenderTransform = group;
 
+            _car.Effect = _carGlow;
             canvas.Children.Add(_trail);
             canvas.Children.Add(_car);
         }
+
+        // Neon glow (Tron light-cycle look); tinted from the theme's race colour on each rebuild.
+        private readonly System.Windows.Media.Effects.DropShadowEffect _trailGlow = new() { ShadowDepth = 0, BlurRadius = 7, Opacity = 0.9 };
+        private readonly System.Windows.Media.Effects.DropShadowEffect _carGlow = new() { ShadowDepth = 0, BlurRadius = 8, Opacity = 0.85 };
 
         private static void AddRect(Canvas parent, double x, double y, double w, double h, double r, string brush, double opacity = 1)
         {
@@ -150,6 +156,12 @@ public static class RaceTrack
         /// <summary>Recomputes the lap from the card size (the track starts at the top-right bend).</summary>
         public void Rebuild()
         {
+            if (_canvas.TryFindResource("Hud.Race") is SolidColorBrush race)
+            {
+                _trailGlow.Color = race.Color;
+                _carGlow.Color = race.Color;
+            }
+
             _segments.Clear();
             var w = _canvas.ActualWidth - 2 * Inset;
             var h = _canvas.ActualHeight - 2 * Inset;
@@ -269,7 +281,8 @@ public static class RaceTrack
             var s0 = seg.StartDistance + along;
             // The trail's leading edge sits just behind the car.
             _trail.StrokeDashOffset = (TrailLength + 5 - s0) / _trail.StrokeThickness;
-            _trail.Opacity = 0.18 + 0.55 * Math.Clamp(Math.Abs(yaw) / MaxYaw, 0, 1);
+            // Always lit like a light-cycle trail; brighter while the car is sideways.
+            _trail.Opacity = 0.55 + 0.45 * Math.Clamp(Math.Abs(yaw) / MaxYaw, 0, 1);
         }
 
         private static double Smooth(double u) => u * u * (3 - 2 * u);

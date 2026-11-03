@@ -4,7 +4,7 @@
         xmlns:b="clr-namespace:AiCodingHub.App.Behaviors"
         Title="Mini Monitor"
         Icon="pack://application:,,,/Assets/app.ico"
-        Width="360"
+        Width="376"
         MinHeight="90"
         MaxHeight="860"
         WindowStyle="None"
@@ -218,8 +218,10 @@
             </Border>
 
             <!-- ===== Body: "needs you" strips, then the widgets ===== -->
-            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="10,2,10,2" Focusable="False">
-                <StackPanel>
+            <!-- The margin lives inside the scrolled content: ScrollViewer padding is outside its
+                 clip, so the race car riding on a card's border would be cut off there. -->
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="10,0,10,2" Focusable="False">
+                <StackPanel Margin="8,6,8,2">
                     <ItemsControl ItemsSource="{Binding Host.Decisions}" Focusable="False" />
                     <ItemsControl ItemsSource="{Binding Host.VisibleWidgets}" Focusable="False" />
                 </StackPanel>

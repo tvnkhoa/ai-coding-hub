@@ -29,6 +29,10 @@
     <SolidColorBrush x:Key="Hud.OnAccent"              Color="#FF0E1014" />
 
     <!-- Live-session pill -->
+    <!-- Working-project race car + its neon trail (Tron light-cycle orange) -->
+    <SolidColorBrush x:Key="Hud.Race"                  Color="#FFFF8A1F" />
+    <SolidColorBrush x:Key="Hud.Race.Cabin"            Color="#FF2A1205" />
+
     <SolidColorBrush x:Key="Hud.Live"                  Color="#FF7FD9AE" />
     <SolidColorBrush x:Key="Hud.Live.Soft"             Color="#214CC38A" />
 

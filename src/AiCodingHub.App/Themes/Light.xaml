@@ -2,32 +2,36 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- Light theme tokens (see Dark.xaml for the meaning of each key). -->
-    <SolidColorBrush x:Key="Hud.Background"            Color="#F5FBFBFD" />
-    <SolidColorBrush x:Key="Hud.Background.Backdrop"   Color="#F5FBFBFD" />
+    <SolidColorBrush x:Key="Hud.Background"            Color="#FAF1F2F5" />
+    <SolidColorBrush x:Key="Hud.Background.Backdrop"   Color="#FAF1F2F5" />
     <SolidColorBrush x:Key="Hud.Header.Background"     Color="#00000000" />
-    <SolidColorBrush x:Key="Hud.Header.Hover"          Color="#12000000" />
-    <SolidColorBrush x:Key="Hud.Footer.Background"     Color="#05000000" />
-    <SolidColorBrush x:Key="Hud.Card"                  Color="#06000000" />
-    <SolidColorBrush x:Key="Hud.Card.Border"           Color="#0F000000" />
-    <SolidColorBrush x:Key="Hud.Card.Hover"            Color="#0D000000" />
-    <SolidColorBrush x:Key="Hud.Row.Focus"             Color="#0B000000" />
-    <SolidColorBrush x:Key="Hud.Border"                Color="#17000000" />
-    <SolidColorBrush x:Key="Hud.Divider"               Color="#12000000" />
-    <SolidColorBrush x:Key="Hud.Foreground"            Color="#FF1B1B1F" />
-    <SolidColorBrush x:Key="Hud.Foreground.Subtle"     Color="#FF55565E" />
-    <SolidColorBrush x:Key="Hud.Foreground.Muted"      Color="#FF6B6C74" />
-    <SolidColorBrush x:Key="Hud.Track"                 Color="#14000000" />
-    <SolidColorBrush x:Key="Hud.Tick"                  Color="#40000000" />
+    <SolidColorBrush x:Key="Hud.Header.Hover"          Color="#14000000" />
+    <SolidColorBrush x:Key="Hud.Footer.Background"     Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Hud.Card"                  Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Hud.Card.Border"           Color="#FFDADCE2" />
+    <SolidColorBrush x:Key="Hud.Card.Hover"            Color="#FFF3F5F8" />
+    <SolidColorBrush x:Key="Hud.Row.Focus"             Color="#FFEEF1F6" />
+    <SolidColorBrush x:Key="Hud.Border"                Color="#FFCDD0D7" />
+    <SolidColorBrush x:Key="Hud.Divider"               Color="#FFDADCE2" />
+    <SolidColorBrush x:Key="Hud.Foreground"            Color="#FF15161A" />
+    <SolidColorBrush x:Key="Hud.Foreground.Subtle"     Color="#FF464851" />
+    <SolidColorBrush x:Key="Hud.Foreground.Muted"      Color="#FF5F616B" />
+    <SolidColorBrush x:Key="Hud.Track"                 Color="#FFE3E5EA" />
+    <SolidColorBrush x:Key="Hud.Tick"                  Color="#FF9A9DA6" />
     <SolidColorBrush x:Key="Hud.Leader"                Color="#FFB7791F" />
 
     <SolidColorBrush x:Key="Hud.Accent"                Color="#FF005FB8" />
     <SolidColorBrush x:Key="Hud.Accent.Strong"         Color="#FF005FB8" />
-    <SolidColorBrush x:Key="Hud.Accent.Soft"           Color="#17005FB8" />
-    <SolidColorBrush x:Key="Hud.Accent.Border"         Color="#59005FB8" />
+    <SolidColorBrush x:Key="Hud.Accent.Soft"           Color="#FFE3EEFA" />
+    <SolidColorBrush x:Key="Hud.Accent.Border"         Color="#FF7FAEE0" />
     <SolidColorBrush x:Key="Hud.OnAccent"              Color="#FFFFFFFF" />
 
+    <!-- Working-project race car + its neon trail (Tron light-cycle orange) -->
+    <SolidColorBrush x:Key="Hud.Race"                  Color="#FFE96A00" />
+    <SolidColorBrush x:Key="Hud.Race.Cabin"            Color="#FFFFF1E3" />
+
     <SolidColorBrush x:Key="Hud.Live"                  Color="#FF1A7F4B" />
-    <SolidColorBrush x:Key="Hud.Live.Soft"             Color="#1C1A7F4B" />
+    <SolidColorBrush x:Key="Hud.Live.Soft"             Color="#FFE1F3E8" />
 
     <SolidColorBrush x:Key="Hud.Status.Ok"             Color="#FF1A7F4B" />
     <SolidColorBrush x:Key="Hud.Status.Warn"           Color="#FF9A6700" />
