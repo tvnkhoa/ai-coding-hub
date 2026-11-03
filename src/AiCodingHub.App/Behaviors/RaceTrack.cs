@@ -31,12 +31,12 @@ public static class RaceTrack
     public static void SetRadius(DependencyObject d, double v) => d.SetValue(RadiusProperty, v);
 
     private const double Inset = 0.75;          // the track runs along the card's border line
-    private const double StraightSpeed = 210;   // average px/s on a straight
-    private const double CornerFactor = 0.32;   // cornering speed as a fraction of it
+    private const double StraightSpeed = 190;   // average px/s on a straight
+    private const double CornerFactor = 0.12;   // cornering speed as a fraction of it: slow, readable bends (~0.6 s each)
     private const double MaxYaw = 46;           // degrees the body swings past the track in a bend
     private const double PreSwing = 0.4;        // share of MaxYaw already out when braking ends
-    private const double YawDecay = 0.2;        // s: how fast the swing dies after the bend
-    private const double FishtailPeriod = 0.55; // s: one counter-steer wobble out of the bend
+    private const double YawDecay = 0.28;       // s: how fast the swing dies after the bend
+    private const double FishtailPeriod = 0.75; // s: one counter-steer wobble out of the bend
     private const double TrailLength = 92;      // px: a light-cycle style neon trail
 
     private static readonly Dictionary<Canvas, Track> Active = new();
