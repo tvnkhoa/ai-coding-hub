@@ -461,3 +461,58 @@ public class LargeTranscriptTests
         }
     }
 }
+
+public class DecisionMarkerTests
+{
+    private sealed class NoProcesses : IProcessInspector
+    {
+        public bool IsAlive(int pid) => true;
+        public IReadOnlyDictionary<int, int> ParentMap() => new Dictionary<int, int>();
+        public int? ForegroundProcessId() => null;
+    }
+
+    [Fact]
+    public async Task Hook_Marker_Shows_An_Open_Question_Until_The_Transcript_Has_The_Answer()
+    {
+        var root = Fx.TempDir();
+        var markers = Fx.TempDir();
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            var path = Path.Combine(Directory.CreateDirectory(Path.Combine(root, "D--Work-alpha")).FullName, "s-1.jsonl");
+            File.WriteAllLines(path, new[] { Fx.User(now.AddSeconds(-20)), Fx.Assistant(now.AddSeconds(-10), "claude-opus-5-5", "m1", "r1") });
+
+            // Claude Code has not written the question yet; only the hook knows it is open.
+            File.WriteAllText(Path.Combine(markers, "s-1.json"),
+                $$"""{"session_id":"s-1","tool_use_id":"toolu_q1","tool":"AskUserQuestion","header":"Pick","question":"Which one?","at":"{{now.AddSeconds(-3):O}}"}""");
+
+            var options = new TestOptionsMonitor<HudOptions>(new HudOptions { ClaudeProjectsRoot = root, HandoverDir = root, DecisionMarkerDir = markers });
+            var provider = new ClaudeProvider(options, new ModelCatalog(), new FakeTimeProvider(now), new NoProcesses(),
+                NullLogger<ClaudeProvider>.Instance, new ClaudeSettingsReader(Path.Combine(root, "none.json")));
+
+            var open = (await provider.GetAsync()).Groups.Single().Sessions.Single();
+            Assert.NotNull(open.Decision);
+            Assert.Equal("Pick", open.Decision!.Header);
+            Assert.Equal("Which one?", open.Decision.Question);
+
+            // Answered: the transcript now holds the result, even if the marker lingers.
+            File.AppendAllLines(path, new[]
+            {
+                $$$"""{"type":"user","timestamp":"{{{now:O}}}","cwd":"D:/Work/alpha","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_q1","content":"A"}]}}""",
+            });
+            var answered = (await provider.GetAsync()).Groups.Single().Sessions.Single();
+            Assert.Null(answered.Decision);
+
+            // A marker for another prompt with no transcript answer shows again; removing it clears it.
+            File.WriteAllText(Path.Combine(markers, "s-1.json"), """{"session_id":"s-1","tool_use_id":"toolu_q2","tool":"ExitPlanMode"}""");
+            Assert.Equal("plan", (await provider.GetAsync()).Groups.Single().Sessions.Single().Decision?.Kind);
+            File.Delete(Path.Combine(markers, "s-1.json"));
+            Assert.Null((await provider.GetAsync()).Groups.Single().Sessions.Single().Decision);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+            Directory.Delete(markers, true);
+        }
+    }
+}

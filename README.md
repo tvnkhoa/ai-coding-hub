@@ -43,10 +43,17 @@ setup changes, your transcript content never leaves the machine, and it needs no
 - **Notifications**: per-session context alerts (80/90/95 %), "a session needs your decision"
   (in the HUD and as a Windows notification), and an "all sessions idle" alert. Each fires once
   when its condition is reached.
+  - Claude Code writes a question to the transcript only after you answer it, so to see an
+    open question live, install the optional hook `tools/hooks/hud-decision.mjs`:
+    - Copy it to `%USERPROFILE%\.claude\hooks\`.
+    - In `~/.claude/settings.json`, register `node "<path>/hud-decision.mjs"` for
+      `PreToolUse` and `PostToolUse` (matcher `AskUserQuestion|ExitPlanMode`), `UserPromptSubmit`
+      and `Stop`.
+    - The hook only writes and removes marker files in `~/.claude/hud-pending`.
 - **Fluent look**:
   - Opaque dark / light palettes with a sun/moon toggle (or Auto, following Windows),
     vector icons, Windows 11 rounded corners.
-  - Tabular numbers, resizable width, per-monitor DPI.
+  - Tabular numbers, fixed width that grows with the sessions, per-monitor DPI.
   - Always-on-top, system tray.
 - **Footer**: today / week spend, the subscription 5-hour limit with a manual refresh (weekly
   limit in its tooltip), and Claude CPU/RAM.

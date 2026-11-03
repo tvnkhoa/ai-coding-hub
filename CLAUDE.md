@@ -77,6 +77,10 @@ Roles come from the owner's working-day hook (read-only): `~/.claude/handover/.s
 positional fields describe a *primary* session (focused, else most recent) for history.
 Context alerts are evaluated per session; a session with an unanswered `AskUserQuestion` /
 `ExitPlanMode` carries a `DecisionRequest` ("needs you" strip, bell, Windows notification).
+Claude Code writes those tool calls to the transcript only once they are answered, so the live
+signal is the optional hook `tools/hooks/hud-decision.mjs`: it leaves
+`~/.claude/hud-pending/<session>.json` while the prompt is open (`DecisionMarkerReader`,
+`Hud:DecisionMarkerDir`). A marker whose `tool_use_id` the transcript has already answered is ignored.
 
 Spend across all transcripts (today/week/month) comes from `CostLedger` on its own loop
 (`CostScanService`, 30 s, per-file offsets), never on the session poll.

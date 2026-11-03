@@ -35,6 +35,13 @@ public sealed class HudOptions
     /// </summary>
     public string? HandoverDir { get; set; }
 
+    /// <summary>
+    /// Folder of live-prompt markers written by the optional <c>tools/hooks/hud-decision.mjs</c>
+    /// hook; empty = <c>%USERPROFILE%\.claude\hud-pending</c>. Without the hook, a question is
+    /// only seen once Claude Code writes it to the transcript.
+    /// </summary>
+    public string? DecisionMarkerDir { get; set; }
+
     /// <summary>Most sessions shown at once (most recently active first).</summary>
     public int MaxSessions { get; set; } = 12;
 

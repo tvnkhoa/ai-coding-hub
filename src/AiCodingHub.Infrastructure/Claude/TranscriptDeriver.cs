@@ -33,12 +33,19 @@ public sealed class SessionAccumulator
     private double _latencySum, _latencyMax;
     private int _latencyCount;
     private DateTimeOffset? _pendingUserTs;
+    private readonly HashSet<string> _answered = new(StringComparer.Ordinal);
 
     public SessionAccumulator(IPricingCatalog pricing) => _pricing = pricing;
 
     public int EventCount { get; private set; }
 
     public string? Model => _model;
+
+    /// <summary>True when a tool_result for <paramref name="toolUseId"/> has been folded.</summary>
+    public bool IsAnswered(string toolUseId) => _answered.Contains(toolUseId);
+
+    /// <summary>Timestamp of the newest folded line (null before any timestamped line).</summary>
+    public DateTimeOffset? LastTimestamp => _last;
 
     public void Add(TranscriptEvent ev)
     {
@@ -57,6 +64,7 @@ public sealed class SessionAccumulator
             foreach (var id in answered)
             {
                 _pending.Remove(id);
+                _answered.Add(id);
             }
         }
         if (ev.Role == EventRole.Assistant && ev.Question is { } question)

@@ -46,6 +46,8 @@ public sealed class ClaudeProvider : IClaudeProvider
     private string? _registryDir;
     private IReadOnlyDictionary<string, RegisteredSession> _registered = new Dictionary<string, RegisteredSession>();
     private Dictionary<int, bool> _alive = new();
+    private DecisionMarkerReader? _markers;
+    private string? _markerDir;
     private IReadOnlyDictionary<int, int> _parents = new Dictionary<int, int>();
     private DateTimeOffset _lastDiscovery = DateTimeOffset.MinValue;
 
@@ -156,6 +158,23 @@ public sealed class ClaudeProvider : IClaudeProvider
         }
     }
 
+    /// <summary>
+    /// A prompt open right now according to the hook marker (Claude Code writes the question to
+    /// the transcript only once it is answered). Ignored when the transcript already has the answer.
+    /// </summary>
+    private static DecisionRequest? FromMarker(Dictionary<string, DecisionMarker> markers, SessionTracker tracker)
+    {
+        if (!markers.TryGetValue(tracker.File.SessionId, out var m)
+            || (m.ToolUseId is { } id && tracker.IsAnswered(id)))
+        {
+            return null;
+        }
+
+        return m.Tool == "ExitPlanMode"
+            ? new DecisionRequest(m.ToolUseId ?? "plan", "plan", "Plan", "Plan ready for approval", m.At)
+            : new DecisionRequest(m.ToolUseId ?? "question", "question", m.Header ?? "Question", m.Question ?? "", m.At);
+    }
+
     private ClaudeSnapshot Build(HudOptions opts, DateTimeOffset now)
     {
         if (_trackers.Count == 0)
@@ -165,6 +184,12 @@ public sealed class ClaudeProvider : IClaudeProvider
 
         var idle = TimeSpan.FromMinutes(Math.Max(1, opts.IdleMinutes));
         var foreground = _processes.ForegroundProcessId();
+        if (_markers is null || !string.Equals(_markerDir, opts.DecisionMarkerDir, StringComparison.OrdinalIgnoreCase))
+        {
+            _markerDir = opts.DecisionMarkerDir;
+            _markers = new DecisionMarkerReader(opts.DecisionMarkerDir);
+        }
+        var markers = _markers.Read(now);
 
         var rows = new List<(SessionSummary Summary, ClaudeSnapshot Snapshot)>();
         foreach (var tracker in _trackers.Values)
@@ -214,7 +239,8 @@ public sealed class ClaudeProvider : IClaudeProvider
                 Activity: activity,
                 Name: snap.Name,
                 // A session whose process exited is not waiting on anyone any more.
-                Decision: activity == SessionActivity.Ended ? null : snap.PendingDecision);
+                Decision: activity == SessionActivity.Ended ? null
+                    : snap.PendingDecision ?? FromMarker(markers, tracker));
 
             rows.Add((summary, snap));
         }

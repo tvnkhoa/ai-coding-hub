@@ -75,6 +75,9 @@ public sealed class SessionTracker
         }
     }
 
+    /// <summary>True when the transcript already holds the answer to <paramref name="toolUseId"/>.</summary>
+    public bool IsAnswered(string toolUseId) => _acc.IsAnswered(toolUseId) || _peek?.IsAnswered(toolUseId) == true;
+
     public ClaudeSnapshot Snapshot(TimeSpan idleThreshold, DateTimeOffset now)
     {
         var full = _acc.ToSnapshot(idleThreshold, now);
