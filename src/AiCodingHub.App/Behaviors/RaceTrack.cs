@@ -37,7 +37,8 @@ public static class RaceTrack
     private const double PreSwing = 0.4;        // share of MaxYaw already out when braking ends
     private const double YawDecay = 0.28;       // s: how fast the swing dies after the bend
     private const double FishtailPeriod = 0.75; // s: one counter-steer wobble out of the bend
-    private const double TrailLength = 92;      // px: a light-cycle style neon trail
+    private const double TrailSeconds = 0.55;   // the trail is where the rear wheels were this long ago
+    private const int TrailSegments = 48;       // pooled line pieces drawing the trail
 
     private static readonly Dictionary<Canvas, Track> Active = new();
     private static readonly Stopwatch Clock = Stopwatch.StartNew();
@@ -106,10 +107,14 @@ public static class RaceTrack
     private sealed class Track
     {
         private readonly Canvas _canvas;
-        private readonly Path _trail;
+        private readonly Canvas _trailLayer = new();
+        private readonly Line[] _trailLines = new Line[TrailSegments];
+        private readonly List<(double Time, Point Rear)> _history = new();
         private readonly Canvas _car;
-        // Yaw pivots on the front axle, so the rear is what swings out.
-        private readonly RotateTransform _rotate = new() { CenterX = 3.5, CenterY = 0 };
+        // Heading turns the car about its centre; yaw then pivots it on the front axle, so the
+        // rear is what swings out in a bend.
+        private readonly RotateTransform _yaw = new() { CenterX = 3.5, CenterY = 0 };
+        private readonly RotateTransform _heading = new();
         private readonly TranslateTransform _translate = new();
         private readonly List<Segment> _segments = new();
         private double _lap, _perimeter, _cornerSpeed, _start = double.NaN;
@@ -118,9 +123,22 @@ public static class RaceTrack
         {
             _canvas = canvas;
 
-            _trail = new Path { StrokeThickness = 1.8, StrokeDashCap = PenLineCap.Round, Opacity = 0.6 };
-            _trail.SetResourceReference(Shape.StrokeProperty, "Hud.Race");
-            _trail.Effect = _trailGlow;
+            // The trail traces the rear wheels' real path, so when the tail swings out in a bend the
+            // trail swings out with it into an arc (a light-cycle wall drawn by the car).
+            for (var i = 0; i < TrailSegments; i++)
+            {
+                var line = new Line
+                {
+                    StrokeThickness = 1.8,
+                    StrokeStartLineCap = PenLineCap.Round,
+                    StrokeEndLineCap = PenLineCap.Round,
+                    Visibility = Visibility.Collapsed,
+                };
+                line.SetResourceReference(Shape.StrokeProperty, "Hud.Race");
+                _trailLines[i] = line;
+                _trailLayer.Children.Add(line);
+            }
+            _trailLayer.Effect = _trailGlow;
 
             // Top-down car pointing along +X, centred on the origin: body, cabin, four wheels.
             _car = new Canvas { Width = 0, Height = 0 };
@@ -131,12 +149,13 @@ public static class RaceTrack
                 AddRect(_car, x, y, 2.6, 1.4, 0.6, "Hud.Foreground");
             }
             var group = new TransformGroup();
-            group.Children.Add(_rotate);
+            group.Children.Add(_yaw);
+            group.Children.Add(_heading);
             group.Children.Add(_translate);
             _car.RenderTransform = group;
 
             _car.Effect = _carGlow;
-            canvas.Children.Add(_trail);
+            canvas.Children.Add(_trailLayer);
             canvas.Children.Add(_car);
         }
 
@@ -163,6 +182,7 @@ public static class RaceTrack
             }
 
             _segments.Clear();
+            _history.Clear();
             var w = _canvas.ActualWidth - 2 * Inset;
             var h = _canvas.ActualHeight - 2 * Inset;
             if (w <= 4 || h <= 4)
@@ -206,23 +226,6 @@ public static class RaceTrack
             _lap = time;
             _perimeter = dist;
 
-            // Trail geometry: the same outline, drawn from the same starting point.
-            var fig = new PathFigure { StartPoint = new Point(x1 - r, y0), IsClosed = true };
-            var size = new Size(r, r);
-            fig.Segments.Add(new ArcSegment(new Point(x1, y0 + r), size, 0, false, SweepDirection.Clockwise, true));
-            fig.Segments.Add(new LineSegment(new Point(x1, y1 - r), true));
-            fig.Segments.Add(new ArcSegment(new Point(x1 - r, y1), size, 0, false, SweepDirection.Clockwise, true));
-            fig.Segments.Add(new LineSegment(new Point(x0 + r, y1), true));
-            fig.Segments.Add(new ArcSegment(new Point(x0, y1 - r), size, 0, false, SweepDirection.Clockwise, true));
-            fig.Segments.Add(new LineSegment(new Point(x0, y0 + r), true));
-            fig.Segments.Add(new ArcSegment(new Point(x0 + r, y0), size, 0, false, SweepDirection.Clockwise, true));
-            fig.Segments.Add(new LineSegment(new Point(x1 - r, y0), true));
-            var geometry = new PathGeometry(new[] { fig });
-            geometry.Freeze();
-            _trail.Data = geometry;
-            var units = _perimeter / _trail.StrokeThickness;
-            var dash = TrailLength / _trail.StrokeThickness;
-            _trail.StrokeDashArray = new DoubleCollection { dash, Math.Max(0.1, units - dash) };
         }
 
         public void Tick(double now)
@@ -276,13 +279,49 @@ public static class RaceTrack
 
             _translate.X = x;
             _translate.Y = y;
-            _rotate.Angle = heading + yaw;
+            _heading.Angle = heading;
+            _yaw.Angle = yaw;
 
-            var s0 = seg.StartDistance + along;
-            // The trail's leading edge sits just behind the car.
-            _trail.StrokeDashOffset = (TrailLength + 5 - s0) / _trail.StrokeThickness;
-            // Always lit like a light-cycle trail; brighter while the car is sideways.
-            _trail.Opacity = 0.55 + 0.45 * Math.Clamp(Math.Abs(yaw) / MaxYaw, 0, 1);
+            // Rear axle in canvas space: (-4.5, 0) yawed about the front axle, then turned to the
+            // heading and moved onto the track.
+            var yr = yaw * Math.PI / 180;
+            var lx = 3.5 + (-4.5 - 3.5) * Math.Cos(yr);
+            var ly = (-4.5 - 3.5) * Math.Sin(yr);
+            var hr = heading * Math.PI / 180;
+            var rear = new Point(x + lx * Math.Cos(hr) - ly * Math.Sin(hr), y + lx * Math.Sin(hr) + ly * Math.Cos(hr));
+            DrawTrail(now, rear, Math.Clamp(Math.Abs(yaw) / MaxYaw, 0, 1));
+        }
+
+        /// <summary>Draws the rear wheels' recent path, fading with age; brighter while sideways.</summary>
+        private void DrawTrail(double now, Point rear, double sideways)
+        {
+            _history.Add((now, rear));
+            var cutoff = now - TrailSeconds;
+            var drop = 0;
+            while (drop < _history.Count - 1 && _history[drop].Time < cutoff) drop++;
+            if (drop > 0) _history.RemoveRange(0, drop);
+
+            // Use at most TrailSegments pieces, spread evenly over the history.
+            var points = _history.Count;
+            var pieces = Math.Min(TrailSegments, points - 1);
+            var boost = 0.75 + 0.25 * sideways;
+            for (var i = 0; i < TrailSegments; i++)
+            {
+                var line = _trailLines[i];
+                if (i >= pieces)
+                {
+                    line.Visibility = Visibility.Collapsed;
+                    continue;
+                }
+
+                var a = _history[(int)((long)i * (points - 1) / pieces)];
+                var b = _history[(int)((long)(i + 1) * (points - 1) / pieces)];
+                line.X1 = a.Rear.X; line.Y1 = a.Rear.Y;
+                line.X2 = b.Rear.X; line.Y2 = b.Rear.Y;
+                var age = (now - b.Time) / TrailSeconds;         // 0 at the car, 1 at the tip
+                line.Opacity = Math.Clamp(1 - age, 0, 1) * boost;
+                line.Visibility = Visibility.Visible;
+            }
         }
 
         private static double Smooth(double u) => u * u * (3 - 2 * u);
