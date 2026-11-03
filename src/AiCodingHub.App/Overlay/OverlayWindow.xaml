@@ -1,0 +1,188 @@
+<Window x:Class="AiCodingHub.App.Overlay.OverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Claude Mini Alert"
+        Icon="pack://application:,,,/Assets/luffy.ico"
+        Width="340"
+        MinWidth="320"
+        MaxWidth="640"
+        MinHeight="90"
+        MaxHeight="860"
+        WindowStyle="None"
+        AllowsTransparency="False"
+        Background="Transparent"
+        Topmost="{Binding IsPinned}"
+        ShowInTaskbar="False"
+        ResizeMode="CanResize"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterScreen"
+        FontFamily="{Binding Font, FallbackValue='Segoe UI'}"
+        TextOptions.TextFormattingMode="Ideal"
+        UseLayoutRounding="True">
+
+    <!-- Non-layered window with the glass frame over the whole client area: DWM paints the
+         Windows 11 acrylic backdrop behind the transparent background (see WindowInterop). -->
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="0" GlassFrameThickness="-1" ResizeBorderThickness="6"
+                      CornerRadius="0" UseAeroCaptionButtons="False" />
+    </WindowChrome.WindowChrome>
+
+    <Grid>
+        <!-- Background tint (its opacity is the HUD opacity; text stays fully opaque). -->
+        <Border CornerRadius="8" Opacity="{Binding BackgroundOpacity}">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Background" Value="{DynamicResource Hud.Background}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource Hud.Border}" />
+                    <Setter Property="BorderThickness" Value="1" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding UseBackdrop}" Value="True">
+                            <Setter Property="Background" Value="{DynamicResource Hud.Background.Backdrop}" />
+                            <Setter Property="BorderThickness" Value="0" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+        </Border>
+
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- Header (drag handle + controls) -->
+            <Border x:Name="HeaderBar" Grid.Row="0"
+                    Background="{DynamicResource Hud.Header.Background}"
+                    Padding="12,6,6,4"
+                    MouseLeftButtonDown="Header_MouseLeftButtonDown">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <Button Command="{Binding ToggleCompactCommand}">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource Hud.IconButton}">
+                                    <Setter Property="Content" Value="&#xE73F;" />
+                                    <Setter Property="ToolTip" Value="Compact: group headers only" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsCompact}" Value="True">
+                                            <Setter Property="Content" Value="&#xE740;" />
+                                            <Setter Property="ToolTip" Value="Expand: show every session" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                        <Button Command="{Binding TogglePinCommand}">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource Hud.IconButton}">
+                                    <Setter Property="Content" Value="&#xE840;" />
+                                    <Setter Property="Foreground" Value="{DynamicResource Hud.Accent}" />
+                                    <Setter Property="ToolTip" Value="Pinned on top — click to unpin" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsPinned}" Value="False">
+                                            <Setter Property="Content" Value="&#xE718;" />
+                                            <Setter Property="Foreground" Value="{DynamicResource Hud.Foreground.Subtle}" />
+                                            <Setter Property="ToolTip" Value="Not on top — click to pin" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                        <Button Style="{StaticResource Hud.CloseButton}"
+                                Content="&#xE8BB;" FontSize="10" ToolTip="Exit"
+                                Command="{Binding ExitCommand}" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Image Source="pack://application:,,,/Assets/luffy.ico"
+                               Width="16" Height="16"
+                               VerticalAlignment="Center" Margin="0,0,8,0"
+                               RenderOptions.BitmapScalingMode="HighQuality" />
+                        <TextBlock Text="{Binding Title}" Style="{StaticResource Hud.TitleText}" />
+                        <Border Style="{StaticResource Hud.Chip}" Margin="8,0,0,0" ToolTip="Live sessions">
+                            <Border.Visibility>
+                                <Binding Path="Host.HasSession" Converter="{StaticResource BoolToVis}" />
+                            </Border.Visibility>
+                            <TextBlock Text="{Binding Host.SessionCount}" FontSize="10.5"
+                                       Typography.NumeralAlignment="Tabular"
+                                       Foreground="{DynamicResource Hud.Accent}" />
+                        </Border>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+
+            <!-- Body: pluggable widgets (WidgetHostViewModel.VisibleWidgets). Each item is
+                 rendered by the implicit DataTemplate for its VM type in WidgetTemplates.xaml. -->
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="8,2,8,2"
+                          Focusable="False">
+                <ItemsControl ItemsSource="{Binding Host.VisibleWidgets}" Focusable="False" />
+            </ScrollViewer>
+
+            <!-- Transient alert banner (floats over the body top, fades in). -->
+            <Border Grid.Row="1" VerticalAlignment="Top" Margin="8,2"
+                    Panel.ZIndex="10"
+                    CornerRadius="8" Padding="10,7"
+                    Background="{Binding Banner.Severity, Converter={StaticResource AlertColor}}"
+                    Visibility="{Binding Banner.IsVisible, Converter={StaticResource BoolToVis}}">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding Banner.IsVisible}" Value="True">
+                                <DataTrigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                             From="0" To="1" Duration="0:0:0.18" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </DataTrigger.EnterActions>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" VerticalAlignment="Top"
+                            Style="{StaticResource Hud.IconButton}" Width="22" Height="22"
+                            Foreground="White" Content="&#xE8BB;" FontSize="9" ToolTip="Dismiss"
+                            Command="{Binding Banner.DismissCommand}" />
+                    <StackPanel>
+                        <TextBlock Text="{Binding Banner.Title}" Foreground="White"
+                                   FontWeight="SemiBold" FontSize="12" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding Banner.Message}" Foreground="White"
+                                   FontSize="11" TextWrapping="Wrap" Margin="0,2,0,0" Opacity="0.9" />
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+
+            <!-- Footer: spend + subscription usage + Claude process load -->
+            <Border Grid.Row="2"
+                    Background="{DynamicResource Hud.Footer.Background}"
+                    BorderBrush="{DynamicResource Hud.Divider}" BorderThickness="0,1,0,0"
+                    CornerRadius="0,0,8,8"
+                    Padding="12,5,12,6">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
+                                ToolTip="CPU and memory of all Claude Code processes">
+                        <TextBlock Style="{StaticResource Hud.Icon}" Text="&#xE9D9;" FontSize="11"
+                                   Foreground="{DynamicResource Hud.Foreground.Muted}" Margin="0,0,5,0" />
+                        <TextBlock Text="{Binding Host.CpuText}" Style="{StaticResource Hud.NumberText}" FontSize="11" />
+                        <TextBlock Text=" · " Style="{StaticResource Hud.MutedText}" />
+                        <TextBlock Text="{Binding Host.RamText}" Style="{StaticResource Hud.NumberText}" FontSize="11" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="Today" Style="{StaticResource Hud.MutedText}" Margin="0,0,5,0" />
+                        <TextBlock Text="{Binding Host.TodayCost}" Style="{StaticResource Hud.NumberText}"
+                                   FontWeight="SemiBold" FontSize="11.5" />
+                        <TextBlock Text="Week" Style="{StaticResource Hud.MutedText}" Margin="12,0,5,0" />
+                        <TextBlock Text="{Binding Host.WeekCost}" Style="{StaticResource Hud.NumberText}" FontSize="11.5" />
+                        <StackPanel Orientation="Horizontal"
+                                    Visibility="{Binding Host.HasUsage, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="5h" Style="{StaticResource Hud.MutedText}" Margin="12,0,5,0" />
+                            <TextBlock Text="{Binding Host.UsageText}" Style="{StaticResource Hud.NumberText}" FontSize="11.5" />
+                        </StackPanel>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

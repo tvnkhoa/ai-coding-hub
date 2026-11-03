@@ -1,0 +1,30 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Dark theme tokens. "Backdrop" variants are lighter tints laid over the DWM acrylic
+         backdrop (Windows 11); the plain ones are used when no backdrop is available. -->
+    <SolidColorBrush x:Key="Hud.Background"            Color="#F01C1C21" />
+    <SolidColorBrush x:Key="Hud.Background.Backdrop"   Color="#991C1C21" />
+    <SolidColorBrush x:Key="Hud.Header.Background"     Color="#00FFFFFF" />
+    <SolidColorBrush x:Key="Hud.Header.Hover"          Color="#1FFFFFFF" />
+    <SolidColorBrush x:Key="Hud.Footer.Background"     Color="#0AFFFFFF" />
+    <SolidColorBrush x:Key="Hud.Card"                  Color="#0AFFFFFF" />
+    <SolidColorBrush x:Key="Hud.Card.Hover"            Color="#14FFFFFF" />
+    <SolidColorBrush x:Key="Hud.Border"                Color="#26FFFFFF" />
+    <SolidColorBrush x:Key="Hud.Divider"               Color="#14FFFFFF" />
+    <SolidColorBrush x:Key="Hud.Foreground"            Color="#FFF5F5F7" />
+    <SolidColorBrush x:Key="Hud.Foreground.Subtle"     Color="#B8F5F5F7" />
+    <SolidColorBrush x:Key="Hud.Foreground.Muted"      Color="#80F5F5F7" />
+    <SolidColorBrush x:Key="Hud.Accent"                Color="#FF60CDFF" />
+    <SolidColorBrush x:Key="Hud.Accent.Soft"           Color="#2660CDFF" />
+    <SolidColorBrush x:Key="Hud.Track"                 Color="#1AFFFFFF" />
+    <SolidColorBrush x:Key="Hud.Leader"                Color="#FFF7C04A" />
+
+    <!-- Context severity (bands come from Alerts thresholds) -->
+    <SolidColorBrush x:Key="Hud.Status.Ok"             Color="#FF4CC38A" />
+    <SolidColorBrush x:Key="Hud.Status.Warn"           Color="#FFF2C94C" />
+    <SolidColorBrush x:Key="Hud.Status.High"           Color="#FFF2994A" />
+    <SolidColorBrush x:Key="Hud.Status.Critical"       Color="#FFFF6369" />
+    <SolidColorBrush x:Key="Hud.Status.Idle"           Color="#FF8B8B93" />
+
+</ResourceDictionary>

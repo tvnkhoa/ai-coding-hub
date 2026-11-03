@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AiCodingHub.App/AiCodingHub.App.csproj" />
+    <Project Path="src/AiCodingHub.Core/AiCodingHub.Core.csproj" />
+    <Project Path="src/AiCodingHub.Infrastructure/AiCodingHub.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AiCodingHub.Tests/AiCodingHub.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,67 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\AiCodingHub.Core\AiCodingHub.Core.csproj" />
+    <ProjectReference Include="..\AiCodingHub.Infrastructure\AiCodingHub.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.9" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.9" />
+    <PackageReference Include="Serilog.Extensions.Hosting" Version="10.0.0" />
+    <PackageReference Include="Serilog.Settings.Configuration" Version="10.0.1" />
+    <PackageReference Include="Serilog.Sinks.Debug" Version="3.0.0" />
+    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <!-- System-tray NotifyIcon (built-in WinForms; no extra package). -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>ClaudeMiniAlert</AssemblyName>
+    <!-- Straw Hat Pirates (Luffy) Jolly Roger — taskbar / Alt-Tab / .exe icon. -->
+    <ApplicationIcon>Assets\luffy.ico</ApplicationIcon>
+    <!-- Per-monitor V2 DPI awareness. -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- WPF takes DPI awareness from the manifest; the WinForms analyzer (tray icon) would prefer an API call. -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
+  </PropertyGroup>
+
+  <!-- Product/version metadata stamped into the published .exe. -->
+  <PropertyGroup>
+    <Version>1.0.0</Version>
+    <Product>Claude Code Mini Alert</Product>
+    <Authors>tvnkhoa</Authors>
+    <AssemblyTitle>Claude Code Mini Alert</AssemblyTitle>
+    <FileDescription>Always-on-top HUD for monitoring Claude Code</FileDescription>
+    <Copyright>Copyright © 2026 tvnkhoa</Copyright>
+  </PropertyGroup>
+
+  <!-- Perf: workstation non-concurrent GC keeps the resident set small for a low-activity HUD. -->
+  <PropertyGroup>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+  </PropertyGroup>
+
+  <!-- UseWindowsForms adds System.Drawing + System.Windows.Forms to implicit usings, which
+       collide with WPF (Application, Color, ...). Drop them globally; the only WinForms
+       consumer (TrayIconController) imports them explicitly at file scope. -->
+  <ItemGroup>
+    <Using Remove="System.Drawing" />
+    <Using Remove="System.Windows.Forms" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <!-- Embed the icon so the window + tray can load it via pack URI at runtime. -->
+    <Resource Include="Assets\luffy.ico" />
+  </ItemGroup>
+
+</Project>

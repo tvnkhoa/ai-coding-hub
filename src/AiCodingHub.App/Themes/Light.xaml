@@ -1,0 +1,28 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Light theme tokens (see Dark.xaml for the meaning of each key). -->
+    <SolidColorBrush x:Key="Hud.Background"            Color="#F5F7F7FA" />
+    <SolidColorBrush x:Key="Hud.Background.Backdrop"   Color="#A6F7F7FA" />
+    <SolidColorBrush x:Key="Hud.Header.Background"     Color="#00000000" />
+    <SolidColorBrush x:Key="Hud.Header.Hover"          Color="#14000000" />
+    <SolidColorBrush x:Key="Hud.Footer.Background"     Color="#08000000" />
+    <SolidColorBrush x:Key="Hud.Card"                  Color="#08000000" />
+    <SolidColorBrush x:Key="Hud.Card.Hover"            Color="#10000000" />
+    <SolidColorBrush x:Key="Hud.Border"                Color="#1F000000" />
+    <SolidColorBrush x:Key="Hud.Divider"               Color="#12000000" />
+    <SolidColorBrush x:Key="Hud.Foreground"            Color="#FF1B1B1F" />
+    <SolidColorBrush x:Key="Hud.Foreground.Subtle"     Color="#B31B1B1F" />
+    <SolidColorBrush x:Key="Hud.Foreground.Muted"      Color="#851B1B1F" />
+    <SolidColorBrush x:Key="Hud.Accent"                Color="#FF005FB8" />
+    <SolidColorBrush x:Key="Hud.Accent.Soft"           Color="#1F005FB8" />
+    <SolidColorBrush x:Key="Hud.Track"                 Color="#14000000" />
+    <SolidColorBrush x:Key="Hud.Leader"                Color="#FFB7791F" />
+
+    <SolidColorBrush x:Key="Hud.Status.Ok"             Color="#FF1A7F4B" />
+    <SolidColorBrush x:Key="Hud.Status.Warn"           Color="#FF9A6700" />
+    <SolidColorBrush x:Key="Hud.Status.High"           Color="#FFBC4C00" />
+    <SolidColorBrush x:Key="Hud.Status.Critical"       Color="#FFCF222E" />
+    <SolidColorBrush x:Key="Hud.Status.Idle"           Color="#FF8C8C94" />
+
+</ResourceDictionary>

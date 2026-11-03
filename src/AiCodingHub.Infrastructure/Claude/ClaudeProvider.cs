@@ -1,0 +1,295 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using AiCodingHub.Core.Abstractions;
+using AiCodingHub.Core.Models;
+using AiCodingHub.Core.Options;
+using AiCodingHub.Core.Pricing;
+using AiCodingHub.Infrastructure.System;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+
+namespace AiCodingHub.Infrastructure.Claude;
+
+/// <summary>
+/// Monitors every relevant Claude Code session at once and groups them by repo with their
+/// working-day role (leader / member). Each session keeps its own <see cref="SessionTracker"/>,
+/// so a poll reads only appended bytes and nothing is re-read when the owner switches windows.
+/// <para>
+/// Which sessions: today's sessions in the handover registry (while their process runs, plus
+/// <c>EndedHideMinutes</c> after it exits) and any other transcript written within
+/// <c>ActiveWindowMinutes</c>, capped at <c>MaxSessions</c>. The file system is re-scanned every
+/// <see cref="DiscoveryInterval"/>; tracked files are tailed on every poll.
+/// </para>
+/// Called from a single background loop, so instance state is not synchronized. Never throws.
+/// </summary>
+public sealed class ClaudeProvider : IClaudeProvider
+{
+    private static readonly TimeSpan DiscoveryInterval = TimeSpan.FromSeconds(2);
+
+    /// <summary>Bytes of backlog folded per session per poll (keeps each poll short).</summary>
+    private const long PumpBudgetBytes = 16L << 20;
+
+    private readonly IOptionsMonitor<HudOptions> _options;
+    private readonly IPricingCatalog _pricing;
+    private readonly TimeProvider _time;
+    private readonly IProcessInspector _processes;
+    private readonly ILogger<ClaudeProvider> _log;
+    private readonly ClaudeSettingsReader _settings;
+
+    private readonly TranscriptParser _parser = new();
+    private readonly Dictionary<string, SessionTracker> _trackers = new(StringComparer.OrdinalIgnoreCase);
+
+    private HandoverRegistryReader? _registry;
+    private string? _registryDir;
+    private IReadOnlyDictionary<string, RegisteredSession> _registered = new Dictionary<string, RegisteredSession>();
+    private Dictionary<int, bool> _alive = new();
+    private IReadOnlyDictionary<int, int> _parents = new Dictionary<int, int>();
+    private DateTimeOffset _lastDiscovery = DateTimeOffset.MinValue;
+
+    public ClaudeProvider(
+        IOptionsMonitor<HudOptions> options,
+        IPricingCatalog pricing,
+        TimeProvider time,
+        IProcessInspector processes,
+        ILogger<ClaudeProvider> log,
+        ClaudeSettingsReader? settings = null)
+    {
+        _options = options;
+        _pricing = pricing;
+        _time = time;
+        _processes = processes;
+        _log = log;
+        _settings = settings ?? new ClaudeSettingsReader();
+    }
+
+    public Task<ClaudeSnapshot> GetAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var now = _time.GetUtcNow();
+            var opts = _options.CurrentValue;
+
+            if (now - _lastDiscovery >= DiscoveryInterval)
+            {
+                Discover(opts, now);
+                _lastDiscovery = now;
+            }
+
+            foreach (var tracker in _trackers.Values)
+            {
+                try
+                {
+                    tracker.Pump(PumpBudgetBytes);
+                }
+                catch (Exception ex)
+                {
+                    _log.LogDebug(ex, "Tailing {Path} failed", tracker.File.Path);
+                }
+            }
+
+            return Task.FromResult(Build(opts, now));
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Claude provider failed; returning empty slice");
+            return Task.FromResult(ClaudeSnapshot.Empty);
+        }
+    }
+
+    private void Discover(HudOptions opts, DateTimeOffset now)
+    {
+        var root = string.IsNullOrWhiteSpace(opts.ClaudeProjectsRoot) ? SessionLocator.DefaultRoot : opts.ClaudeProjectsRoot!;
+        if (_registry is null || !string.Equals(_registryDir, opts.HandoverDir, StringComparison.OrdinalIgnoreCase))
+        {
+            _registryDir = opts.HandoverDir;
+            _registry = new HandoverRegistryReader(opts.HandoverDir);
+        }
+
+        _registered = _registry.ReadToday(now);
+        _alive = _registered.Values
+            .Where(r => r.Pid is not null)
+            .Select(r => r.Pid!.Value)
+            .Distinct()
+            .ToDictionary(pid => pid, _processes.IsAlive);
+        _parents = _processes.ParentMap();
+
+        var activeWindow = TimeSpan.FromMinutes(Math.Max(1, opts.ActiveWindowMinutes));
+        var endedHide = TimeSpan.FromMinutes(Math.Max(0, opts.EndedHideMinutes));
+        var nowUtc = now.UtcDateTime;
+
+        var wanted = SessionLocator.EnumerateSessions(root)
+            .Where(f =>
+            {
+                var age = nowUtc - f.LastWriteUtc;
+                if (_registered.TryGetValue(f.SessionId, out var reg))
+                {
+                    var alive = reg.Pid is { } pid ? _alive.GetValueOrDefault(pid, true) : age <= activeWindow;
+                    return alive || age <= endedHide;
+                }
+                return age <= activeWindow;
+            })
+            .OrderByDescending(f => f.LastWriteUtc)
+            .Take(Math.Max(1, opts.MaxSessions))
+            .ToList();
+
+        var keep = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var file in wanted)
+        {
+            keep.Add(file.Path);
+            if (_trackers.TryGetValue(file.Path, out var tracker))
+            {
+                tracker.File = file;
+            }
+            else
+            {
+                _trackers[file.Path] = new SessionTracker(file, _parser, _pricing, PumpBudgetBytes);
+            }
+        }
+
+        foreach (var gone in _trackers.Keys.Where(k => !keep.Contains(k)).ToList())
+        {
+            _trackers.Remove(gone);
+        }
+    }
+
+    private ClaudeSnapshot Build(HudOptions opts, DateTimeOffset now)
+    {
+        if (_trackers.Count == 0)
+        {
+            return ClaudeSnapshot.Empty;
+        }
+
+        var idle = TimeSpan.FromMinutes(Math.Max(1, opts.IdleMinutes));
+        var foreground = _processes.ForegroundProcessId();
+
+        var rows = new List<(SessionSummary Summary, ClaudeSnapshot Snapshot)>();
+        foreach (var tracker in _trackers.Values)
+        {
+            var snap = tracker.Snapshot(idle, now);
+            if (!snap.HasActiveSession)
+            {
+                continue; // nothing parsed yet (brand-new, empty file)
+            }
+
+            snap = snap with { Context = snap.Context with { MaxTokens = ResolveWindow(snap.Session.Model, snap.Context) } };
+            _registered.TryGetValue(tracker.File.SessionId, out var reg);
+
+            var lastActivity = snap.Task.LastActivityAt
+                ?? new DateTimeOffset(tracker.File.LastWriteUtc, TimeSpan.Zero);
+            var lastWrite = new DateTimeOffset(tracker.File.LastWriteUtc, TimeSpan.Zero);
+            if (lastWrite > lastActivity)
+            {
+                lastActivity = lastWrite; // tool output lines may lack timestamps
+            }
+
+            var ended = reg?.Pid is { } pid && !_alive.GetValueOrDefault(pid, true);
+            var activity = ended ? SessionActivity.Ended
+                : now - lastActivity > idle ? SessionActivity.Idle
+                : SessionActivity.Active;
+
+            var group = reg?.Repo
+                ?? (snap.Session.ProjectName is { Length: > 0 } p && p != "—" ? p : tracker.File.ProjectDir);
+            var model = snap.Session.Model;
+
+            var summary = new SessionSummary(
+                SessionId: tracker.File.SessionId,
+                Group: group,
+                Role: reg?.Role ?? SessionRole.None,
+                Model: model,
+                ModelLabel: model == "—" ? "—" : _pricing.Resolve(model).Label,
+                ProjectName: snap.Session.ProjectName,
+                Workspace: snap.Session.Workspace,
+                ContextTokens: snap.Context.CurrentTokens,
+                MaxTokens: snap.Context.MaxTokens,
+                SessionCostUsd: snap.Cost.SessionUsd,
+                Requests: snap.Requests.Requests,
+                StartedAt: snap.Session.StartedAt,
+                LastActivityAt: lastActivity,
+                Pid: reg?.Pid,
+                IsFocused: false,
+                Activity: activity);
+
+            rows.Add((summary, snap));
+        }
+
+        if (rows.Count == 0)
+        {
+            return ClaudeSnapshot.Empty;
+        }
+
+        MarkFocused(rows, foreground);
+
+        var groups = rows
+            .Select(r => r.Summary)
+            .GroupBy(s => s.Group, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new SessionGroup(
+                g.Key,
+                g.OrderBy(s => s.Role == SessionRole.Leader ? 0 : s.Role == SessionRole.Member ? 1 : 2)
+                 .ThenBy(s => s.StartedAt ?? DateTimeOffset.MaxValue)
+                 .ThenBy(s => s.SessionId, StringComparer.Ordinal)
+                 .ToList()))
+            // Registry repos first (stable alphabetical order), then ad-hoc sessions.
+            .OrderBy(g => g.Sessions.Any(s => s.Role != SessionRole.None) ? 0 : 1)
+            .ThenBy(g => g.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        // Primary session for single-session consumers: focused, else most recently active live one.
+        var primary = rows.FirstOrDefault(r => r.Summary.IsFocused);
+        if (primary.Snapshot is null)
+        {
+            primary = rows
+                .OrderBy(r => r.Summary.Activity == SessionActivity.Ended ? 1 : 0)
+                .ThenByDescending(r => r.Summary.LastActivityAt)
+                .First();
+        }
+
+        return primary.Snapshot with { Groups = groups };
+    }
+
+    /// <summary>
+    /// Marks the session whose claude.exe descends from the foreground window's process. Several
+    /// matches (tabs of one terminal window) are ambiguous, so none is marked.
+    /// </summary>
+    private void MarkFocused(List<(SessionSummary Summary, ClaudeSnapshot Snapshot)> rows, int? foreground)
+    {
+        if (foreground is not { } fg)
+        {
+            return;
+        }
+
+        var matches = new List<int>();
+        for (var i = 0; i < rows.Count; i++)
+        {
+            if (rows[i].Summary is { Pid: { } pid, Activity: not SessionActivity.Ended }
+                && ProcessInspector.IsAncestor(_parents, fg, pid))
+            {
+                matches.Add(i);
+            }
+        }
+
+        if (matches.Count == 1)
+        {
+            var i = matches[0];
+            rows[i] = (rows[i].Summary with { IsFocused = true }, rows[i].Snapshot);
+        }
+    }
+
+    /// <summary>
+    /// Context window for one session: the model's native window, widened to 1M when the user's
+    /// settings select the 1M beta for that model family, or when the context already exceeds the
+    /// native window (which proves the larger window is in use).
+    /// </summary>
+    private long ResolveWindow(string model, ContextInfo context)
+    {
+        var window = context.MaxTokens > 0 ? context.MaxTokens : ModelCatalog.DefaultWindow;
+        if (window < ModelCatalog.LargeWindow
+            && (context.CurrentTokens > window || _settings.IsLargeContextFor(model)))
+        {
+            window = ModelCatalog.LargeWindow;
+        }
+        return window;
+    }
+}
