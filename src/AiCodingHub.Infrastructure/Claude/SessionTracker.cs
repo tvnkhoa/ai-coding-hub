@@ -92,6 +92,7 @@ public sealed class SessionTracker
 
         return tail with
         {
+            Name = tail.Name ?? full.Name,
             Session = tail.Session with { StartedAt = full.Session.StartedAt ?? tail.Session.StartedAt },
             Cost = full.HasActiveSession ? full.Cost : tail.Cost,
             Requests = full.HasActiveSession ? full.Requests : tail.Requests,

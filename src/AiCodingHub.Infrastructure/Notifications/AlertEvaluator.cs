@@ -20,8 +20,7 @@ public sealed class AlertEvaluator : IAlertEvaluator
     // single primary session, and per session id when the snapshot carries session groups.
     private int _contextLevel;
     private readonly Dictionary<string, int> _sessionLevels = new(StringComparer.OrdinalIgnoreCase);
-    private bool _costArmed;
-    private readonly HashSet<string> _costAlerted = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _decisionsAlerted = new(StringComparer.Ordinal);
     private bool _idleArmed;
 
     public AlertEvaluator(IOptionsMonitor<AlertOptions> options) => _options = options;
@@ -32,8 +31,8 @@ public sealed class AlertEvaluator : IAlertEvaluator
         var alerts = new List<Alert>();
 
         EvaluateContext(current, opts, now, alerts);
-        EvaluateCost(current, opts, now, alerts);
         EvaluateIdle(current, opts, now, alerts);
+        EvaluateDecisions(current, opts, now, alerts);
 
         return alerts;
     }
@@ -106,50 +105,40 @@ public sealed class AlertEvaluator : IAlertEvaluator
         return level;
     }
 
-    private void EvaluateCost(HudSnapshot current, AlertOptions opts, DateTimeOffset now, List<Alert> alerts)
+    /// <summary>
+    /// Once per pending question (session + tool call): a session waiting on the owner's answer.
+    /// The alert re-arms only for a new question, never for the same one still pending.
+    /// </summary>
+    private void EvaluateDecisions(HudSnapshot current, AlertOptions opts, DateTimeOffset now, List<Alert> alerts)
     {
-        if (!opts.EnableCost || !current.HasActiveSession)
+        if (!opts.EnableDecision)
         {
-            _costArmed = false;
-            _costAlerted.Clear();
+            _decisionsAlerted.Clear();
             return;
         }
 
-        if (current.Groups.Count == 0)
-        {
-            var over = (double)current.Cost.SessionUsd >= opts.CostThresholdUsd;
-            if (over && !_costArmed)
-            {
-                alerts.Add(new Alert(AlertKind.CostExceeded, AlertSeverity.Warning, "Cost threshold",
-                    $"Session cost ${current.Cost.SessionUsd:0.00} exceeded ${opts.CostThresholdUsd:0.00}.", now));
-                _costArmed = true;
-            }
-            else if (!over)
-            {
-                _costArmed = false;
-            }
-            return;
-        }
-
-        // Once per session: the primary session changes as sessions take turns writing, so a
-        // single armed flag would re-fire every time it moved between cheap and expensive ones.
+        var pending = new HashSet<string>(StringComparer.Ordinal);
         foreach (var group in current.Groups)
         {
             foreach (var s in group.Sessions)
             {
-                var over = (double)s.SessionCostUsd >= opts.CostThresholdUsd;
-                if (over && _costAlerted.Add(s.SessionId))
+                if (s.Decision is not { } d)
                 {
-                    alerts.Add(new Alert(AlertKind.CostExceeded, AlertSeverity.Warning,
-                        $"Cost threshold · {group.Name} {s.ShortId}",
-                        $"Session cost ${s.SessionCostUsd:0.00} exceeded ${opts.CostThresholdUsd:0.00}.", now));
+                    continue;
                 }
-                else if (!over)
+
+                var key = $"{s.SessionId}|{d.ToolUseId}";
+                pending.Add(key);
+                if (_decisionsAlerted.Add(key))
                 {
-                    _costAlerted.Remove(s.SessionId);
+                    alerts.Add(new Alert(AlertKind.DecisionNeeded, AlertSeverity.High,
+                        $"{group.Name} · {s.DisplayName} needs your decision",
+                        d.Kind == "plan" ? "Plan ready for approval." : d.Header, now));
                 }
             }
         }
+
+        _decisionsAlerted.RemoveWhere(k => !pending.Contains(k));
     }
 
     private void EvaluateIdle(HudSnapshot current, AlertOptions opts, DateTimeOffset now, List<Alert> alerts)

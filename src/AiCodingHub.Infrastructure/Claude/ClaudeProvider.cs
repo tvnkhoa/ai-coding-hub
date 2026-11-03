@@ -210,7 +210,10 @@ public sealed class ClaudeProvider : IClaudeProvider
                 LastActivityAt: lastActivity,
                 Pid: reg?.Pid,
                 IsFocused: false,
-                Activity: activity);
+                Activity: activity,
+                Name: snap.Name,
+                // A session whose process exited is not waiting on anyone any more.
+                Decision: activity == SessionActivity.Ended ? null : snap.PendingDecision);
 
             rows.Add((summary, snap));
         }

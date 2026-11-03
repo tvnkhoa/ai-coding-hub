@@ -43,8 +43,18 @@ public sealed record SessionSummary(
     DateTimeOffset? LastActivityAt,
     int? Pid,
     bool IsFocused,
-    SessionActivity Activity)
+    SessionActivity Activity,
+    string? Name = null,
+    DecisionRequest? Decision = null)
 {
+    /// <summary>
+    /// What the dashboard shows: the launcher-given name (<c>agent-name</c>), else "Leader" for a
+    /// leader, else the short session id.
+    /// </summary>
+    public string DisplayName => !string.IsNullOrWhiteSpace(Name)
+        ? Name!
+        : Role == SessionRole.Leader ? "Leader" : ShortId;
+
     public double ContextPercent => MaxTokens <= 0
         ? 0
         : Math.Clamp(ContextTokens * 100.0 / MaxTokens, 0, 100);
@@ -52,6 +62,12 @@ public sealed record SessionSummary(
     /// <summary>First 8 characters of the session id (what the owner sees in briefs and reports).</summary>
     public string ShortId => SessionId.Length > 8 ? SessionId[..8] : SessionId;
 }
+
+/// <summary>
+/// A question the session is blocked on until the owner answers it in the terminal
+/// (an unanswered <c>AskUserQuestion</c> or <c>ExitPlanMode</c> tool call).
+/// </summary>
+public sealed record DecisionRequest(string ToolUseId, string Kind, string Header, string Question, DateTimeOffset? Since);
 
 /// <summary>Sessions of one repo, leader first, then members by start time.</summary>
 public sealed record SessionGroup(string Name, IReadOnlyList<SessionSummary> Sessions)
@@ -63,6 +79,8 @@ public sealed record SessionGroup(string Name, IReadOnlyList<SessionSummary> Ses
     public double MaxContextPercent => Sessions.Count == 0 ? 0 : Sessions.Max(s => s.ContextPercent);
 
     public int LiveCount => Sessions.Count(s => s.Activity != SessionActivity.Ended);
+
+    public bool NeedsDecision => Sessions.Any(s => s.Decision is not null);
 }
 
 /// <summary>Spend across every transcript, bucketed by (working) day / week / month.</summary>

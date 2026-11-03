@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 
 namespace AiCodingHub.Infrastructure.Claude;
@@ -36,6 +37,16 @@ public sealed class TranscriptParser
                 RequestId = ReadString(root, "requestId"),
             };
 
+            var recordType = ReadString(root, "type");
+            if (recordType == "agent-name")
+            {
+                return ev with { SessionName = ReadString(root, "agentName") };
+            }
+            if (recordType == "custom-title")
+            {
+                return ev with { SessionName = ReadString(root, "customTitle") };
+            }
+
             if (!root.TryGetProperty("message", out var message) || message.ValueKind != JsonValueKind.Object)
             {
                 return ev;
@@ -47,6 +58,8 @@ public sealed class TranscriptParser
             int toolUse = 0;
             string? lastTool = null;
             bool hasText = false, hasThinking = false, isToolResult = false, isToolResultError = false;
+            PendingQuestion? question = null;
+            List<string>? answered = null;
 
             if (message.TryGetProperty("content", out var content))
             {
@@ -76,9 +89,17 @@ public sealed class TranscriptParser
                             case "tool_use":
                                 toolUse++;
                                 lastTool = ReadString(block, "name") ?? lastTool;
+                                if (role == EventRole.Assistant && ReadQuestion(block, lastTool) is { } q)
+                                {
+                                    question = q;
+                                }
                                 break;
                             case "tool_result":
                                 isToolResult = true;
+                                if (role == EventRole.User && ReadString(block, "tool_use_id") is { } answeredId)
+                                {
+                                    (answered ??= new List<string>()).Add(answeredId);
+                                }
                                 if (block.TryGetProperty("is_error", out var err) &&
                                     err.ValueKind == JsonValueKind.True)
                                 {
@@ -101,12 +122,51 @@ public sealed class TranscriptParser
                 HasThinking = hasThinking,
                 IsToolResult = isToolResult,
                 IsToolResultError = isToolResultError,
+                Question = question,
+                AnsweredToolUseIds = answered,
             };
         }
         catch (JsonException)
         {
             return null;
         }
+    }
+
+    /// <summary>The owner-blocking tool calls: a question or a plan waiting for approval.</summary>
+    private static PendingQuestion? ReadQuestion(JsonElement block, string? name)
+    {
+        var id = ReadString(block, "id");
+        if (id is null)
+        {
+            return null;
+        }
+
+        if (name == "ExitPlanMode")
+        {
+            return new PendingQuestion(id, "plan", "Plan", "Plan ready for approval");
+        }
+
+        if (name != "AskUserQuestion")
+        {
+            return null;
+        }
+
+        string header = "Question", text = "";
+        if (block.TryGetProperty("input", out var input) && input.ValueKind == JsonValueKind.Object
+            && input.TryGetProperty("questions", out var qs) && qs.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var q in qs.EnumerateArray())
+            {
+                if (q.ValueKind == JsonValueKind.Object)
+                {
+                    header = ReadString(q, "header") ?? header;
+                    text = ReadString(q, "question") ?? text;
+                    break;
+                }
+            }
+        }
+
+        return new PendingQuestion(id, "question", header, text);
     }
 
     private static EventRole ReadRole(JsonElement root)

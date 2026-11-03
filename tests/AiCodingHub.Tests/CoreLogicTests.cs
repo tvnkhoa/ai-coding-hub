@@ -260,18 +260,6 @@ public class AlertEvaluatorTests
         Assert.Equal(AlertKind.ContextCritical, a3[0].Kind);
     }
 
-    [Fact]
-    public void Cost_Alert_Fires_Once_When_Threshold_Crossed()
-    {
-        var eval = new AlertEvaluator(new TestOptionsMonitor<AlertOptions>(new AlertOptions()));
-        var now = DateTimeOffset.UnixEpoch;
-
-        Assert.Empty(eval.Evaluate(SnapshotWithContext(10, cost: 4.99m), now));
-        var fired = eval.Evaluate(SnapshotWithContext(10, cost: 5.00m), now);
-        Assert.Contains(fired, a => a.Kind == AlertKind.CostExceeded);
-        // No repeat while still over.
-        Assert.DoesNotContain(eval.Evaluate(SnapshotWithContext(10, cost: 6.00m), now), a => a.Kind == AlertKind.CostExceeded);
-    }
 }
 
 public class HistoryStoreTests

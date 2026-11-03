@@ -11,6 +11,9 @@ namespace AiCodingHub.App.Settings;
 public interface IUserSettingsWriter
 {
     void SaveWindow(WindowOptions window);
+
+    /// <summary>Sets <c>Hud:Theme</c> ("Dark" | "Light" | "Auto"), keeping the other Hud keys.</summary>
+    void SaveTheme(string theme);
 }
 
 /// <summary>
@@ -44,6 +47,28 @@ public sealed class UserSettingsWriter : IUserSettingsWriter
             catch (Exception ex)
             {
                 _log.LogWarning(ex, "Failed to persist window settings");
+            }
+        }
+    }
+
+    public void SaveTheme(string theme)
+    {
+        lock (_gate)
+        {
+            try
+            {
+                var root = Load();
+                if (root[HudOptions.SectionName] is not JsonObject hud)
+                {
+                    hud = new JsonObject();
+                    root[HudOptions.SectionName] = hud;
+                }
+                hud[nameof(HudOptions.Theme)] = theme;
+                WriteAtomic(root);
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "Failed to persist theme");
             }
         }
     }

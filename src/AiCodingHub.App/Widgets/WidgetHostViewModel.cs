@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -8,6 +9,7 @@ using AiCodingHub.Core.Messaging;
 using AiCodingHub.Core.Models;
 using AiCodingHub.Core.Options;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Options;
 
@@ -22,11 +24,14 @@ namespace AiCodingHub.App.Widgets;
 /// kept and applied by one non-blocking <c>BeginInvoke</c> — so a busy UI never stalls a
 /// collector and stale snapshots are dropped instead of queued.
 /// </para>
-/// Also projects the one-line footer (today's spend, usage, CPU/RAM).
+/// Also projects the chrome around the widgets: the live-session pill, the "needs you" strips
+/// and bell count, and the footer (spend, 5-hour limit with a manual refresh, Claude load).
 /// </summary>
 public sealed partial class WidgetHostViewModel : ObservableObject
 {
     private readonly IReadOnlyList<WidgetViewModel> _registered;
+    private readonly IMessenger _messenger;
+    private readonly DispatcherTimer _refreshTimeout;
 
     /// <summary>Enabled widgets in display order (may be hidden in compact mode).</summary>
     private IReadOnlyList<WidgetViewModel> _enabled;
@@ -34,19 +39,28 @@ public sealed partial class WidgetHostViewModel : ObservableObject
 
     private HudSnapshot? _pending;
     private int _scheduled;
+    private UsageInfo? _lastUsage;
 
     /// <summary>The widgets currently shown, in order — rebuilt on option/compact changes.</summary>
     public ObservableCollection<WidgetViewModel> VisibleWidgets { get; } = new();
 
+    /// <summary>Sessions waiting for the owner's answer, oldest first.</summary>
+    public ObservableCollection<DecisionStripViewModel> Decisions { get; } = new();
+
     [ObservableProperty] private bool _hasSession;
-    [ObservableProperty] private string _statusLine = "waiting for a Claude session…";
-    [ObservableProperty] private string _sessionCount = "";
+    [ObservableProperty] private string _liveCount = "0";
+    [ObservableProperty] private string _liveToolTip = "";
+    [ObservableProperty] private int _decisionCount;
+    [ObservableProperty] private bool _hasDecision;
     [ObservableProperty] private string _todayCost = "$0.00";
-    [ObservableProperty] private string _weekCost = "";
-    [ObservableProperty] private string _usageText = "";
+    [ObservableProperty] private string _weekCost = "$0.00";
     [ObservableProperty] private bool _hasUsage;
-    [ObservableProperty] private string _cpuText = "";
-    [ObservableProperty] private string _ramText = "";
+    [ObservableProperty] private double _usageFraction;
+    [ObservableProperty] private string _usageText = "—";
+    [ObservableProperty] private string _usageToolTip = "Subscription limits are off. Turn on the Usage section in settings.";
+    [ObservableProperty] private bool _isRefreshingUsage;
+    [ObservableProperty] private string _cpuText = "0%";
+    [ObservableProperty] private string _ramText = "0M";
 
     public WidgetHostViewModel(
         IEnumerable<WidgetViewModel> widgets,
@@ -54,8 +68,13 @@ public sealed partial class WidgetHostViewModel : ObservableObject
         IMessenger messenger)
     {
         _registered = widgets.OrderBy(w => w.Order).ToArray();
+        _messenger = messenger;
         _enabled = Filter(options.CurrentValue);
         Rebuild();
+
+        // Clears the spinner if a probe is slow or fails (Update cannot tell which snapshot has it).
+        _refreshTimeout = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
+        _refreshTimeout.Tick += (_, _) => { _refreshTimeout.Stop(); IsRefreshingUsage = false; };
 
         options.OnChange(o => Post(() =>
         {
@@ -79,6 +98,20 @@ public sealed partial class WidgetHostViewModel : ObservableObject
         Rebuild();
     }
 
+    /// <summary>Asks the usage collector for an immediate, out-of-cycle limit probe.</summary>
+    [RelayCommand]
+    private void RefreshUsage()
+    {
+        IsRefreshingUsage = true;
+        _refreshTimeout.Stop();
+        _refreshTimeout.Start();
+        _messenger.Send(new RefreshUsageRequestedMessage());
+    }
+
+    /// <summary>The bell: open the session that has waited longest for the owner.</summary>
+    [RelayCommand]
+    private void OpenFirstDecision() => Decisions.FirstOrDefault()?.OpenCommand.Execute(null);
+
     private void OnSnapshot(HudSnapshot snapshot)
     {
         Volatile.Write(ref _pending, snapshot);
@@ -97,16 +130,25 @@ public sealed partial class WidgetHostViewModel : ObservableObject
             return;
         }
 
+        var now = DateTimeOffset.Now;
         var sessions = snapshot.Groups.Sum(g => g.Sessions.Count);
         var live = snapshot.Groups.Sum(g => g.LiveCount);
         HasSession = sessions > 0 || snapshot.HasActiveSession;
-        SessionCount = sessions == 0 ? "" : live == sessions ? $"{live}" : $"{live}/{sessions}";
-        StatusLine = HasSession ? "" : "waiting for a Claude session…";
+        LiveCount = live.ToString();
+        LiveToolTip = sessions == live ? $"{live} live sessions" : $"{live} live of {sessions} sessions";
+
+        var waiting = snapshot.Groups
+            .SelectMany(g => g.Sessions.Where(s => s.Decision is not null).Select(s => (Group: g.Name, Session: s)))
+            .OrderBy(x => x.Session.Decision!.Since ?? DateTimeOffset.MaxValue)
+            .ToList();
+        SessionsWidgetViewModel.Sync(Decisions, waiting, x => x.Session.SessionId,
+            x => new DecisionStripViewModel(x.Session.SessionId), (vm, x) => vm.Update(x.Group, x.Session, now));
+        DecisionCount = waiting.Count;
+        HasDecision = waiting.Count > 0;
 
         TodayCost = SessionsWidgetViewModel.Money(snapshot.Cost.TodayUsd);
         WeekCost = SessionsWidgetViewModel.Money(snapshot.Cost.WeekUsd);
-        HasUsage = snapshot.Usage.Available;
-        UsageText = snapshot.Usage.Available ? $"{snapshot.Usage.FiveHourPercent:0}%" : "";
+        ApplyUsage(snapshot.Usage, now);
         CpuText = $"{snapshot.Perf.ClaudeCpuPercent:0}%";
         RamText = snapshot.Perf.ClaudeRamMb >= 1024
             ? $"{snapshot.Perf.ClaudeRamMb / 1024:0.0}G"
@@ -117,6 +159,42 @@ public sealed partial class WidgetHostViewModel : ObservableObject
         {
             widget.Update(snapshot);
         }
+    }
+
+    private void ApplyUsage(UsageInfo u, DateTimeOffset now)
+    {
+        // A new UsageInfo instance only comes from a completed probe: stop the spinner.
+        if (!ReferenceEquals(u, _lastUsage))
+        {
+            _lastUsage = u;
+            if (IsRefreshingUsage)
+            {
+                _refreshTimeout.Stop();
+                IsRefreshingUsage = false;
+            }
+        }
+
+        HasUsage = u.Available;
+        if (!u.Available)
+        {
+            UsageFraction = 0;
+            UsageText = "—";
+            return;
+        }
+
+        UsageFraction = u.FiveHourPercent / 100.0;
+        UsageText = $"{u.FiveHourPercent:0}%";
+        UsageToolTip = $"5-hour limit {u.FiveHourPercent:0}%{Reset(u.FiveHourResetAt, now)}"
+                       + $"{Environment.NewLine}Weekly limit {u.WeeklyPercent:0}%{Reset(u.WeeklyResetAt, now)}";
+    }
+
+    private static string Reset(DateTimeOffset? at, DateTimeOffset now)
+    {
+        if (at is not { } a) return "";
+        var left = a - now;
+        if (left <= TimeSpan.Zero) return " · resets now";
+        if (left.TotalDays >= 1) return $" · resets in {(int)left.TotalDays}d {left.Hours}h";
+        return left.TotalHours >= 1 ? $" · resets in {(int)left.TotalHours}h {left.Minutes}m" : $" · resets in {left.Minutes}m";
     }
 
     private IReadOnlyList<WidgetViewModel> Filter(WidgetOptions options) =>
@@ -134,6 +212,6 @@ public sealed partial class WidgetHostViewModel : ObservableObject
         }
     }
 
-    private static void Post(System.Action action) =>
+    private static void Post(Action action) =>
         Application.Current?.Dispatcher.BeginInvoke(action, DispatcherPriority.DataBind);
 }

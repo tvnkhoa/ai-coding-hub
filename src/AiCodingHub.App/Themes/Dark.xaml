@@ -1,30 +1,43 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- Dark theme tokens. "Backdrop" variants are lighter tints laid over the DWM acrylic
-         backdrop (Windows 11); the plain ones are used when no backdrop is available. -->
-    <SolidColorBrush x:Key="Hud.Background"            Color="#F01C1C21" />
-    <SolidColorBrush x:Key="Hud.Background.Backdrop"   Color="#991C1C21" />
+    <!-- Dark theme tokens (match the HUD mockup). "Backdrop" is the lighter tint laid over the
+         Windows 11 acrylic backdrop; the plain one is used when no backdrop is available. -->
+    <SolidColorBrush x:Key="Hud.Background"            Color="#F0202127" />
+    <SolidColorBrush x:Key="Hud.Background.Backdrop"   Color="#F0202127" />
     <SolidColorBrush x:Key="Hud.Header.Background"     Color="#00FFFFFF" />
-    <SolidColorBrush x:Key="Hud.Header.Hover"          Color="#1FFFFFFF" />
-    <SolidColorBrush x:Key="Hud.Footer.Background"     Color="#0AFFFFFF" />
-    <SolidColorBrush x:Key="Hud.Card"                  Color="#0AFFFFFF" />
-    <SolidColorBrush x:Key="Hud.Card.Hover"            Color="#14FFFFFF" />
-    <SolidColorBrush x:Key="Hud.Border"                Color="#26FFFFFF" />
-    <SolidColorBrush x:Key="Hud.Divider"               Color="#14FFFFFF" />
-    <SolidColorBrush x:Key="Hud.Foreground"            Color="#FFF5F5F7" />
-    <SolidColorBrush x:Key="Hud.Foreground.Subtle"     Color="#B8F5F5F7" />
-    <SolidColorBrush x:Key="Hud.Foreground.Muted"      Color="#80F5F5F7" />
-    <SolidColorBrush x:Key="Hud.Accent"                Color="#FF60CDFF" />
-    <SolidColorBrush x:Key="Hud.Accent.Soft"           Color="#2660CDFF" />
-    <SolidColorBrush x:Key="Hud.Track"                 Color="#1AFFFFFF" />
+    <SolidColorBrush x:Key="Hud.Header.Hover"          Color="#1AFFFFFF" />
+    <SolidColorBrush x:Key="Hud.Footer.Background"     Color="#06FFFFFF" />
+    <SolidColorBrush x:Key="Hud.Card"                  Color="#09FFFFFF" />
+    <SolidColorBrush x:Key="Hud.Card.Border"           Color="#0DFFFFFF" />
+    <SolidColorBrush x:Key="Hud.Card.Hover"            Color="#0FFFFFFF" />
+    <SolidColorBrush x:Key="Hud.Row.Focus"             Color="#0FFFFFFF" />
+    <SolidColorBrush x:Key="Hud.Border"                Color="#17FFFFFF" />
+    <SolidColorBrush x:Key="Hud.Divider"               Color="#12FFFFFF" />
+    <SolidColorBrush x:Key="Hud.Foreground"            Color="#FFF3F3F5" />
+    <SolidColorBrush x:Key="Hud.Foreground.Subtle"     Color="#FFB4B5BC" />
+    <SolidColorBrush x:Key="Hud.Foreground.Muted"      Color="#FF8B8C94" />
+    <SolidColorBrush x:Key="Hud.Track"                 Color="#17FFFFFF" />
+    <SolidColorBrush x:Key="Hud.Tick"                  Color="#38FFFFFF" />
     <SolidColorBrush x:Key="Hud.Leader"                Color="#FFF7C04A" />
+
+    <!-- Accent = "needs you" (and the app mark) -->
+    <SolidColorBrush x:Key="Hud.Accent"                Color="#FF60CDFF" />
+    <SolidColorBrush x:Key="Hud.Accent.Strong"         Color="#FF9ADFFF" />
+    <SolidColorBrush x:Key="Hud.Accent.Soft"           Color="#1F60CDFF" />
+    <SolidColorBrush x:Key="Hud.Accent.Border"         Color="#7360CDFF" />
+    <SolidColorBrush x:Key="Hud.OnAccent"              Color="#FF0E1014" />
+    <Color x:Key="Hud.Accent.Color">#FF60CDFF</Color>
+
+    <!-- Live-session pill -->
+    <SolidColorBrush x:Key="Hud.Live"                  Color="#FF7FD9AE" />
+    <SolidColorBrush x:Key="Hud.Live.Soft"             Color="#214CC38A" />
 
     <!-- Context severity (bands come from Alerts thresholds) -->
     <SolidColorBrush x:Key="Hud.Status.Ok"             Color="#FF4CC38A" />
     <SolidColorBrush x:Key="Hud.Status.Warn"           Color="#FFF2C94C" />
     <SolidColorBrush x:Key="Hud.Status.High"           Color="#FFF2994A" />
     <SolidColorBrush x:Key="Hud.Status.Critical"       Color="#FFFF6369" />
-    <SolidColorBrush x:Key="Hud.Status.Idle"           Color="#FF8B8B93" />
+    <SolidColorBrush x:Key="Hud.Status.Idle"           Color="#FF8B8C94" />
 
 </ResourceDictionary>

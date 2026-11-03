@@ -15,7 +15,7 @@ public sealed class HudOptions
     public string Theme { get; set; } = "Auto";
 
     /// <summary>Background opacity percentage (60–100). Text always stays fully opaque.</summary>
-    public int Opacity { get; set; } = 90;
+    public int Opacity { get; set; } = 100;
 
     /// <summary>UI font family (e.g. "Segoe UI Variable Text", "JetBrains Mono").</summary>
     public string Font { get; set; } = "Segoe UI";

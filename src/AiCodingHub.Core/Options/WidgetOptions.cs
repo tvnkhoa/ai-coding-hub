@@ -20,7 +20,4 @@ public sealed class WidgetOptions
     public bool Session { get; set; }
     public bool History { get; set; }
     public bool Notification { get; set; } = true;
-
-    /// <summary>Subscription 5h/weekly usage bars. Requires a configured OAuth token to show data.</summary>
-    public bool Usage { get; set; }
 }

@@ -404,29 +404,6 @@ public class ClaudeProviderMultiSessionTests
         Assert.Single(eval.Evaluate(Snap(S("aaaaaaaa1", 85), S("bbbbbbbb2", 92)), now));
     }
 
-    [Fact]
-    public void Cost_Alert_Fires_Once_Per_Session_Even_When_The_Primary_Flips()
-    {
-        static SessionSummary S(string id, decimal cost) => new(id, "alpha", SessionRole.Member, "m", "M", "p", "",
-            0, 1_000_000, cost, 1, null, null, null, false, SessionActivity.Active);
-
-        // The primary slice alternates between a cheap and an expensive session.
-        HudSnapshot Snap(decimal primaryCost) => HudSnapshot.Empty with
-        {
-            HasActiveSession = true,
-            Cost = new CostInfo(primaryCost, 0, 0, 0),
-            Groups = new[] { new SessionGroup("alpha", new[] { S("cheap0001", 2m), S("pricey001", 9m) }) },
-        };
-
-        var eval = new AlertEvaluator(new TestOptionsMonitor<AlertOptions>(new AlertOptions { EnableIdle = false }));
-        var now = DateTimeOffset.UnixEpoch;
-
-        var fired = eval.Evaluate(Snap(9m), now).Where(a => a.Kind == AlertKind.CostExceeded).ToList();
-        Assert.Single(fired);
-        Assert.Contains("pricey00", fired[0].Title);
-        Assert.DoesNotContain(eval.Evaluate(Snap(2m), now), a => a.Kind == AlertKind.CostExceeded);
-        Assert.DoesNotContain(eval.Evaluate(Snap(9m), now), a => a.Kind == AlertKind.CostExceeded);
-    }
 }
 
 public class LargeTranscriptTests

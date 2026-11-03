@@ -35,8 +35,9 @@ setup changes, your transcript content never leaves the machine, and it needs no
   - Today, week and month totals across all transcripts, refreshed incrementally.
 - **Context usage**: tokens versus the model's window (1M on current models; the `[1m]` beta
   is detected for older ones). Colour bands follow your alert thresholds.
-- **Notifications**: per-session context alerts (80/90/95 %), a per-session cost threshold,
-  and an "all sessions idle" alert. Each alert fires once when its condition is reached.
+- **Notifications**: per-session context alerts (80/90/95 %), "a session needs your decision"
+  (in the HUD and as a Windows notification), and an "all sessions idle" alert. Each fires once
+  when its condition is reached.
 - **Fluent look**:
   - Windows 11 acrylic backdrop, Fluent icons, Dark / Light / Auto themes (follows Windows).
   - Tabular numbers, resizable width, per-monitor DPI.
@@ -85,7 +86,7 @@ Logs roll daily under `%APPDATA%\ClaudeMiniAlert\logs\` and are kept for 7 days.
 |-----------|------|
 | `Hud`     | `RefreshIntervalMs`, `Theme` (Dark/Light/Auto), `Opacity` (60–100, background only), `Font`, `IdleMinutes`, `ClaudeProjectsRoot`, `HandoverDir`, `MaxSessions`, `ActiveWindowMinutes`, `EndedHideMinutes`, `DayStartHour` (start of the "today" cost bucket) |
 | `Widgets` | `Sessions` (main view) plus optional detail widgets: `Model`, `Context`, `Cost`, `Cpu`, `Ram`, `Session`, `History`, `Notification`, `Usage` |
-| `Alerts`  | context warn/high/critical %, cost threshold, per-alert enable flags |
+| `Alerts`  | context warn/high/critical %, per-alert enable flags (incl. `EnableDecision`) |
 | `Window`  | `Width`, `Mode` (Full/Compact), `Topmost`, last position |
 | `Usage`   | optional subscription 5-hour / weekly usage-limit polling (off by default) |
 

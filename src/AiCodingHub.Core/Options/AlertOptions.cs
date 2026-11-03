@@ -13,13 +13,13 @@ public sealed class AlertOptions
     public int ContextHighPercent { get; set; } = 90;
     public int ContextCriticalPercent { get; set; } = 95;
 
-    /// <summary>Session cost ceiling in USD that raises a cost alert.</summary>
-    public double CostThresholdUsd { get; set; } = 5.0;
 
     public bool EnableContext { get; set; } = true;
-    public bool EnableCost { get; set; } = true;
     public bool EnableIdle { get; set; } = true;
     public bool EnableTaskFinished { get; set; } = true;
     public bool EnableToolFailed { get; set; } = true;
     public bool EnableNetwork { get; set; } = true;
+
+    /// <summary>Notify when a session waits for the owner's answer (AskUserQuestion / plan approval).</summary>
+    public bool EnableDecision { get; set; } = true;
 }

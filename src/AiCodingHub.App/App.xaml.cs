@@ -100,7 +100,7 @@ public partial class App : Application
         window.Show();
 
         // Tray icon owns the only re-show/exit affordance once the tool-window is hidden.
-        _tray = new TrayIconController(window);
+        _tray = new TrayIconController(window, _host.Services.GetRequiredService<IMessenger>());
     }
 
     protected override async void OnExit(ExitEventArgs e)

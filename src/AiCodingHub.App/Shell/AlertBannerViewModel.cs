@@ -40,6 +40,11 @@ public sealed partial class AlertBannerViewModel : ObservableObject
 
     private void OnAlert(Alert alert)
     {
+        if (alert.Kind == AlertKind.DecisionNeeded)
+        {
+            return; // shown as a "needs you" strip and a Windows notification instead
+        }
+
         var dispatcher = Application.Current?.Dispatcher;
         if (dispatcher is null)
         {

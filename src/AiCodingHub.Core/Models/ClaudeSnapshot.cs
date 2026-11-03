@@ -20,6 +20,12 @@ public sealed record ClaudeSnapshot(
     /// <summary>All monitored sessions, grouped by repo (empty when none).</summary>
     public IReadOnlyList<SessionGroup> Groups { get; init; } = Array.Empty<SessionGroup>();
 
+    /// <summary>Launcher-given session name (transcript <c>agent-name</c>/<c>custom-title</c>), if any.</summary>
+    public string? Name { get; init; }
+
+    /// <summary>The question this session is waiting on the owner for, if any.</summary>
+    public DecisionRequest? PendingDecision { get; init; }
+
     public static ClaudeSnapshot Empty { get; } = new(
         false,
         SessionInfo.Empty,

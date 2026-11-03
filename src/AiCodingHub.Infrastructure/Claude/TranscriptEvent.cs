@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace AiCodingHub.Infrastructure.Claude;
 
@@ -55,6 +56,15 @@ public sealed record TranscriptEvent
     /// <summary>Key identifying the API response this line belongs to, or null when unknown.</summary>
     public string? ResponseKey => MessageId is null && RequestId is null ? null : $"{MessageId}|{RequestId}";
 
+    /// <summary>Session name from an <c>agent-name</c> / <c>custom-title</c> record.</summary>
+    public string? SessionName { get; init; }
+
+    /// <summary>An <c>AskUserQuestion</c> / <c>ExitPlanMode</c> call in this assistant message (blocks on the owner).</summary>
+    public PendingQuestion? Question { get; init; }
+
+    /// <summary><c>tool_use_id</c>s answered by the tool_result blocks of this user message.</summary>
+    public IReadOnlyList<string>? AnsweredToolUseIds { get; init; }
+
     public bool HasText { get; init; }
     public bool HasThinking { get; init; }
 
@@ -64,3 +74,6 @@ public sealed record TranscriptEvent
     /// <summary>A tool_result flagged is_error.</summary>
     public bool IsToolResultError { get; init; }
 }
+
+/// <summary>A tool call that waits for the owner's answer.</summary>
+public sealed record PendingQuestion(string ToolUseId, string Kind, string Header, string Question);

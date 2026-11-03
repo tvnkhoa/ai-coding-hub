@@ -24,8 +24,8 @@
     <!-- System-tray NotifyIcon (built-in WinForms; no extra package). -->
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>ClaudeMiniAlert</AssemblyName>
-    <!-- Straw Hat Pirates (Luffy) Jolly Roger — taskbar / Alt-Tab / .exe icon. -->
-    <ApplicationIcon>Assets\luffy.ico</ApplicationIcon>
+    <!-- Mini Monitor mark (Assets/generate-app-icon.ps1) — taskbar / Alt-Tab / .exe icon. -->
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <!-- Per-monitor V2 DPI awareness. -->
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- WPF takes DPI awareness from the manifest; the WinForms analyzer (tray icon) would prefer an API call. -->
@@ -61,7 +61,7 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <!-- Embed the icon so the window + tray can load it via pack URI at runtime. -->
-    <Resource Include="Assets\luffy.ico" />
+    <Resource Include="Assets\app.ico" />
   </ItemGroup>
 
 </Project>

@@ -15,7 +15,7 @@ public class OptionsDefaultsTests
 
         Assert.Equal(500, hud.RefreshIntervalMs);
         Assert.Equal("Auto", hud.Theme);
-        Assert.Equal(90, hud.Opacity);
+        Assert.Equal(100, hud.Opacity);
         Assert.Equal(5, hud.IdleMinutes);
         Assert.Null(hud.ClaudeProjectsRoot);
     }
@@ -27,7 +27,6 @@ public class OptionsDefaultsTests
 
         Assert.True(alerts.ContextWarnPercent < alerts.ContextHighPercent);
         Assert.True(alerts.ContextHighPercent < alerts.ContextCriticalPercent);
-        Assert.Equal(5.0, alerts.CostThresholdUsd);
     }
 
     [Fact]

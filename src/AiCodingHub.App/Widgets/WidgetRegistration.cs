@@ -18,7 +18,6 @@ public static class WidgetRegistration
         services.AddSingleton<WidgetViewModel, SessionWidgetViewModel>();
         services.AddSingleton<WidgetViewModel, ContextWidgetViewModel>();
         services.AddSingleton<WidgetViewModel, CostWidgetViewModel>();
-        services.AddSingleton<WidgetViewModel, UsageWidgetViewModel>();
         services.AddSingleton<WidgetViewModel, CpuWidgetViewModel>();
         services.AddSingleton<WidgetViewModel, RamWidgetViewModel>();
         services.AddSingleton<WidgetViewModel, HistoryWidgetViewModel>();

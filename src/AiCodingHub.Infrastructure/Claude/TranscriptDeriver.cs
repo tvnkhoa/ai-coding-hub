@@ -20,6 +20,8 @@ public sealed class SessionAccumulator
 {
     private readonly IPricingCatalog _pricing;
     private readonly HashSet<string> _seenResponses = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (PendingQuestion Question, DateTimeOffset? At)> _pending = new(StringComparer.Ordinal);
+    private string? _name;
 
     private string? _model, _cwd, _branch, _version;
     private DateTimeOffset? _first, _last;
@@ -47,6 +49,19 @@ public sealed class SessionAccumulator
         {
             _first ??= ts;
             _last = ts;
+        }
+
+        if (!string.IsNullOrWhiteSpace(ev.SessionName)) _name = ev.SessionName;
+        if (ev.AnsweredToolUseIds is { } answered)
+        {
+            foreach (var id in answered)
+            {
+                _pending.Remove(id);
+            }
+        }
+        if (ev.Role == EventRole.Assistant && ev.Question is { } question)
+        {
+            _pending[question.ToolUseId] = (question, ev.Timestamp);
         }
 
         if (ev.Cwd is not null) _cwd = ev.Cwd;
@@ -131,13 +146,27 @@ public sealed class SessionAccumulator
         var avgTokens = _assistantWithUsage > 0 ? (double)_outputTokenSum / _assistantWithUsage : 0;
         var stats = new RequestStats(_requests, _prompts, _toolCalls, avgLatency, _latencyMax, avgTokens);
 
+        DecisionRequest? decision = null;
+        foreach (var (q, at) in _pending.Values)
+        {
+            // The oldest unanswered question is the one the session is blocked on.
+            if (decision is null || (at ?? DateTimeOffset.MaxValue) < (decision.Since ?? DateTimeOffset.MaxValue))
+            {
+                decision = new DecisionRequest(q.ToolUseId, q.Kind, q.Header, q.Question, at);
+            }
+        }
+
         return new ClaudeSnapshot(
             HasActiveSession: true,
             Session: session,
             Context: context,
             Cost: new CostInfo(_sessionCost, 0m, 0m, 0m),
             Requests: stats,
-            Task: TranscriptDeriver.DeriveTask(_lastEvent, _last, now, idleThreshold));
+            Task: TranscriptDeriver.DeriveTask(_lastEvent, _last, now, idleThreshold))
+        {
+            Name = _name,
+            PendingDecision = decision,
+        };
     }
 
     private static string SafeLeaf(string path)

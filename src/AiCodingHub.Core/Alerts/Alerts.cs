@@ -9,11 +9,11 @@ public enum AlertKind
     ContextWarn,
     ContextHigh,
     ContextCritical,
-    CostExceeded,
     Idle,
     TaskFinished,
     ToolFailed,
-    NetworkLost
+    NetworkLost,
+    DecisionNeeded
 }
 
 public enum AlertSeverity

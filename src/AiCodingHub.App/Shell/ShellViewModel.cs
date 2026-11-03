@@ -1,6 +1,8 @@
 using System;
 using System.Windows;
 using System.Windows.Threading;
+using AiCodingHub.App.Settings;
+using AiCodingHub.App.Theming;
 using AiCodingHub.App.Widgets;
 using AiCodingHub.Core.Options;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -29,6 +31,11 @@ public partial class ShellViewModel : ObservableObject
     [ObservableProperty] private bool _isCompact;
     [ObservableProperty] private bool _isPinned = true;   // always-on-top (safe, reversible)
 
+    /// <summary>True while the light palette is active (drives the sun/moon toggle).</summary>
+    [ObservableProperty] private bool _isLight;
+
+    private readonly IUserSettingsWriter _writer;
+
     /// <summary>The pluggable widget collection rendered in the body.</summary>
     public WidgetHostViewModel Host { get; }
 
@@ -39,10 +46,15 @@ public partial class ShellViewModel : ObservableObject
         IOptionsMonitor<HudOptions> hud,
         IOptionsMonitor<WindowOptions> window,
         WidgetHostViewModel host,
-        AlertBannerViewModel banner)
+        AlertBannerViewModel banner,
+        ThemeManager theme,
+        IUserSettingsWriter writer)
     {
         Host = host;
         Banner = banner;
+        _writer = writer;
+        IsLight = theme.IsLight;
+        theme.ThemeChanged += isLight => IsLight = isLight;
         Apply(hud.CurrentValue, window.CurrentValue);
         host.SetCompact(IsCompact);
 
@@ -73,6 +85,14 @@ public partial class ShellViewModel : ObservableObject
 
     [RelayCommand]
     private void TogglePin() => IsPinned = !IsPinned;
+
+    /// <summary>Switches Dark ⇄ Light and saves it (replacing "Auto"); the theme hot-reloads.</summary>
+    [RelayCommand]
+    private void ToggleTheme()
+    {
+        IsLight = !IsLight;
+        _writer.SaveTheme(IsLight ? "Light" : "Dark");
+    }
 
     [RelayCommand]
     private static void Exit() => Application.Current.Shutdown();
