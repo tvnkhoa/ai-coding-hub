@@ -65,12 +65,9 @@ public partial class OverlayWindow : Window
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        // Height auto-fits the content (SizeToContent); position and the user's width are restored.
+        // Fixed width; the height always follows the content (SizeToContent), so the HUD grows and
+        // shrinks with the sessions it shows. Only the position is restored.
         var opts = _windowOptions.CurrentValue;
-        if (opts.Width >= MinWidth && opts.Width <= MaxWidth) // older builds saved 300; below MinWidth falls back to the XAML default
-        {
-            Width = opts.Width;
-        }
 
         if (opts.Left is { } left && opts.Top is { } top && IsOnScreen(left, top))
         {

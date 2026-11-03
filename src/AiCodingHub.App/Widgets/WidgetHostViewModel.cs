@@ -57,6 +57,10 @@ public sealed partial class WidgetHostViewModel : ObservableObject
     [ObservableProperty] private bool _hasUsage;
     [ObservableProperty] private double _usageFraction;
     [ObservableProperty] private string _usageText = "—";
+    [ObservableProperty] private int _usageLevel;
+    [ObservableProperty] private double _weeklyFraction;
+    [ObservableProperty] private string _weeklyText = "—";
+    [ObservableProperty] private int _weeklyLevel;
     [ObservableProperty] private string _usageToolTip = "Subscription limits are off. Turn on the Usage section in settings.";
     [ObservableProperty] private bool _isRefreshingUsage;
     [ObservableProperty] private string _cpuText = "0%";
@@ -179,14 +183,23 @@ public sealed partial class WidgetHostViewModel : ObservableObject
         {
             UsageFraction = 0;
             UsageText = "—";
+            WeeklyFraction = 0;
+            WeeklyText = "—";
             return;
         }
 
         UsageFraction = u.FiveHourPercent / 100.0;
         UsageText = $"{u.FiveHourPercent:0}%";
+        UsageLevel = LimitLevel(u.FiveHourPercent);
+        WeeklyFraction = u.WeeklyPercent / 100.0;
+        WeeklyText = $"{u.WeeklyPercent:0}%";
+        WeeklyLevel = LimitLevel(u.WeeklyPercent);
         UsageToolTip = $"5-hour limit {u.FiveHourPercent:0}%{Reset(u.FiveHourResetAt, now)}"
                        + $"{Environment.NewLine}Weekly limit {u.WeeklyPercent:0}%{Reset(u.WeeklyResetAt, now)}";
     }
+
+    /// <summary>Colour band of a usage limit (0 ok · 1 ≥80% · 2 ≥90% · 3 ≥95%).</summary>
+    private static int LimitLevel(double pct) => pct >= 95 ? 3 : pct >= 90 ? 2 : pct >= 80 ? 1 : 0;
 
     private static string Reset(DateTimeOffset? at, DateTimeOffset now)
     {

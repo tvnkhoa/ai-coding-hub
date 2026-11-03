@@ -5,8 +5,6 @@
         Title="Mini Monitor"
         Icon="pack://application:,,,/Assets/app.ico"
         Width="360"
-        MinWidth="330"
-        MaxWidth="640"
         MinHeight="90"
         MaxHeight="860"
         WindowStyle="None"
@@ -14,7 +12,7 @@
         Background="Transparent"
         Topmost="{Binding IsPinned}"
         ShowInTaskbar="False"
-        ResizeMode="CanResize"
+        ResizeMode="NoResize"
         SizeToContent="Height"
         WindowStartupLocation="CenterScreen"
         FontFamily="{Binding Font, FallbackValue='Segoe UI'}"
@@ -24,7 +22,7 @@
     <!-- Non-layered window with the glass frame over the whole client area: DWM paints the
          Windows 11 acrylic backdrop behind the transparent background (see WindowInterop). -->
     <WindowChrome.WindowChrome>
-        <WindowChrome CaptionHeight="0" GlassFrameThickness="-1" ResizeBorderThickness="6"
+        <WindowChrome CaptionHeight="0" GlassFrameThickness="-1" ResizeBorderThickness="0"
                       CornerRadius="0" UseAeroCaptionButtons="False" />
     </WindowChrome.WindowChrome>
 
@@ -299,7 +297,7 @@
                         </StackPanel>
                         <StackPanel Grid.Column="2" Margin="0,0,10,0" ToolTip="{Binding Host.UsageToolTip}">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="5H LIMIT" Style="{StaticResource Hud.FooterLabel}" VerticalAlignment="Center" />
+                                <TextBlock Text="LIMITS" Style="{StaticResource Hud.FooterLabel}" VerticalAlignment="Center" />
                                 <Button x:Name="RefreshFull" Style="{StaticResource Hud.IconButton}" Width="16" Height="16"
                                         Margin="4,0,0,0" ToolTip="Refresh usage limits now"
                                         Command="{Binding Host.RefreshUsageCommand}">
@@ -333,12 +331,57 @@
                                 </Button>
                             </StackPanel>
                             <DockPanel Margin="0,3,0,0">
+                                <TextBlock DockPanel.Dock="Left" Text="5h" Width="18" FontSize="10.5"
+                                           Foreground="{DynamicResource Hud.Foreground.Muted}" VerticalAlignment="Center" />
                                 <TextBlock DockPanel.Dock="Right" Text="{Binding Host.UsageText}" Style="{StaticResource Hud.NumberText}"
-                                           FontSize="11.5" FontWeight="SemiBold" Margin="6,0,0,0" />
+                                           FontSize="11.5" FontWeight="SemiBold" Margin="6,0,0,0" MinWidth="28" TextAlignment="Right" />
                                 <Grid Height="4" VerticalAlignment="Center">
                                     <Border CornerRadius="2" Background="{DynamicResource Hud.Track}" />
-                                    <Border CornerRadius="2" Background="{DynamicResource Hud.Status.Ok}"
-                                            b:Motion.ScaleX="{Binding Host.UsageFraction}" />
+                                    <Border CornerRadius="2" b:Motion.ScaleX="{Binding Host.UsageFraction}">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="{DynamicResource Hud.Status.Ok}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Host.UsageLevel}" Value="1">
+                                                        <Setter Property="Background" Value="{DynamicResource Hud.Status.Warn}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Host.UsageLevel}" Value="2">
+                                                        <Setter Property="Background" Value="{DynamicResource Hud.Status.High}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Host.UsageLevel}" Value="3">
+                                                        <Setter Property="Background" Value="{DynamicResource Hud.Status.Critical}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                    </Border>
+                                </Grid>
+                            </DockPanel>
+                            <DockPanel Margin="0,3,0,0">
+                                <TextBlock DockPanel.Dock="Left" Text="7d" Width="18" FontSize="10.5"
+                                           Foreground="{DynamicResource Hud.Foreground.Muted}" VerticalAlignment="Center" />
+                                <TextBlock DockPanel.Dock="Right" Text="{Binding Host.WeeklyText}" Style="{StaticResource Hud.NumberText}"
+                                           FontSize="11.5" FontWeight="SemiBold" Margin="6,0,0,0" MinWidth="28" TextAlignment="Right" />
+                                <Grid Height="4" VerticalAlignment="Center">
+                                    <Border CornerRadius="2" Background="{DynamicResource Hud.Track}" />
+                                    <Border CornerRadius="2" b:Motion.ScaleX="{Binding Host.WeeklyFraction}">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="{DynamicResource Hud.Status.Ok}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Host.WeeklyLevel}" Value="1">
+                                                        <Setter Property="Background" Value="{DynamicResource Hud.Status.Warn}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Host.WeeklyLevel}" Value="2">
+                                                        <Setter Property="Background" Value="{DynamicResource Hud.Status.High}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Host.WeeklyLevel}" Value="3">
+                                                        <Setter Property="Background" Value="{DynamicResource Hud.Status.Critical}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                    </Border>
                                 </Grid>
                             </DockPanel>
                         </StackPanel>
@@ -371,6 +414,9 @@
                             <TextBlock Text="{Binding Host.WeekCost}" Style="{StaticResource Hud.NumberText}" FontSize="11.5" FontWeight="SemiBold" />
                             <TextBlock Text="5h " FontSize="11.5" Foreground="{DynamicResource Hud.Foreground.Muted}" Margin="14,0,0,0" />
                             <TextBlock Text="{Binding Host.UsageText}" Style="{StaticResource Hud.NumberText}" FontSize="11.5"
+                                       FontWeight="SemiBold" ToolTip="{Binding Host.UsageToolTip}" />
+                            <TextBlock Text="7d " FontSize="11.5" Foreground="{DynamicResource Hud.Foreground.Muted}" Margin="10,0,0,0" />
+                            <TextBlock Text="{Binding Host.WeeklyText}" Style="{StaticResource Hud.NumberText}" FontSize="11.5"
                                        FontWeight="SemiBold" ToolTip="{Binding Host.UsageToolTip}" />
                             <Button Style="{StaticResource Hud.IconButton}" Width="16" Height="16" Margin="4,0,0,0"
                                     ToolTip="Refresh usage limits now" Command="{Binding Host.RefreshUsageCommand}">
