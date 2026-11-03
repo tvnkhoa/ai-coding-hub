@@ -75,7 +75,8 @@ Roles come from the owner's working-day hook (read-only): `~/.claude/handover/.s
 `HandoverRegistryReader`. The pid also gives liveness and the focused-window highlight
 (`ProcessInspector`). The result is `ClaudeSnapshot.Groups` (repo → sessions, leader first); the
 positional fields describe a *primary* session (focused, else most recent) for history.
-Context and cost alerts are evaluated per session.
+Context alerts are evaluated per session; a session with an unanswered `AskUserQuestion` /
+`ExitPlanMode` carries a `DecisionRequest` ("needs you" strip, bell, Windows notification).
 
 Spend across all transcripts (today/week/month) comes from `CostLedger` on its own loop
 (`CostScanService`, 30 s, per-file offsets), never on the session poll.

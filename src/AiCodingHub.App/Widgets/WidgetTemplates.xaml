@@ -8,7 +8,6 @@
     <!-- Shared converter instances (app-wide so any widget template can use them). -->
     <conv:ContextColorConverter x:Key="ContextColor" />
     <conv:AlertSeverityColorConverter x:Key="AlertColor" />
-    <conv:InverseBooleanToVisibilityConverter x:Key="InvBoolToVis" />
     <BooleanToVisibilityConverter x:Key="BoolToVis" />
 
     <!-- ===================== Sessions dashboard (main view) ===================== -->

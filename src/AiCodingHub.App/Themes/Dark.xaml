@@ -27,7 +27,6 @@
     <SolidColorBrush x:Key="Hud.Accent.Soft"           Color="#1F60CDFF" />
     <SolidColorBrush x:Key="Hud.Accent.Border"         Color="#7360CDFF" />
     <SolidColorBrush x:Key="Hud.OnAccent"              Color="#FF0E1014" />
-    <Color x:Key="Hud.Accent.Color">#FF60CDFF</Color>
 
     <!-- Live-session pill -->
     <SolidColorBrush x:Key="Hud.Live"                  Color="#FF7FD9AE" />

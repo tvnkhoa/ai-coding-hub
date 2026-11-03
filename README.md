@@ -9,21 +9,26 @@ It reads Claude's own session transcripts **passively and read-only**. Nothing i
 setup changes, your transcript content never leaves the machine, and it needs no admin rights.
 
 ```text
-╭ Mini Monitor  5/6 ─────────────────── ⤢ 📌 ✕ ╮
-│ ▾ wec.aria          3/4 live   44%   $38.16  │
-│   ★ 22a7e5c0  Opus 5.5   ███░░░░  30% $10.40 ●│
-│     d866422f  Opus 5.5   ████░░░  44% $19.16 ●│
-│     90753428  Opus 5.5   ██░░░░░  18%  $4.10 ○│
-│ ▸ wec.be            1 live     16%    $2.89  │
-├──────────────────────────────────────────────┤
-│ Today $78.51   Week $286   5h 32%    3% · 2.0G│
-╰──────────────────────────────────────────────╯
+╭ ⚡ Mini Monitor  >_ 6          🔔1  ☀  ⤢  📌  ✕ ╮
+│ 🔔 wec.be · Leader needs you        4m   Open │
+│ ▾ wec.aria  3 live                 58%  $68.89 │
+│   ★ Leader              Opus 5.5  ███░░  38% ● │
+│     aria-spec094-build  Opus 5.5  ████░  58% ● │
+│ ─────────────────────────────────────────────  │
+│ ▾ wec.be  2 live  •                24%   $9.62 │
+│   ★ Leader              Opus 5.5  ██░░░  24% ◉ │
+├────────────────────────────────────────────────┤
+│ TODAY $156   WEEK $364   5H LIMIT ⟳ 62%  1% · 2.5G │
+╰────────────────────────────────────────────────╯
 ```
 
 ## Features
 
-- **Multi-session dashboard**: one compact row per session (★ leader, short session id,
-  model, animated context bar, %, cost, activity dot). Click a repo header to collapse it.
+- **Multi-session dashboard**: one compact row per session: ★ leader, the session's name
+  (its launcher-given `agent-name`; "Leader" or the short id otherwise) with the id below,
+  model, animated context bar with an 80% tick, %, and an activity dot. Click a repo header to
+  collapse it; double-click a row to bring its terminal forward. Repo cards show their total
+  cost, and a comet circles a card while any of its sessions is working.
   Compact mode shows group headers only.
 - **Leader / member grouping**: optional. If a hook writes a session registry, roles are
   read from it (see [How it works](#how-it-works)). Otherwise sessions are grouped by project.
@@ -39,11 +44,14 @@ setup changes, your transcript content never leaves the machine, and it needs no
   (in the HUD and as a Windows notification), and an "all sessions idle" alert. Each fires once
   when its condition is reached.
 - **Fluent look**:
-  - Windows 11 acrylic backdrop, Fluent icons, Dark / Light / Auto themes (follows Windows).
+  - Opaque dark / light palettes with a sun/moon toggle (or Auto, following Windows),
+    vector icons, Windows 11 rounded corners.
   - Tabular numbers, resizable width, per-monitor DPI.
   - Always-on-top, system tray.
-- **Optional detail widgets** (model, context, cost, CPU, RAM, history, subscription usage)
-  can be switched back on in settings.
+- **Footer**: today / week spend, the subscription 5-hour limit with a manual refresh (weekly
+  limit in its tooltip), and Claude CPU/RAM.
+- **Optional detail widgets** (model, context, cost, CPU, RAM, history) can be switched back on
+  in settings.
 
 ## Requirements
 
@@ -84,7 +92,7 @@ Logs roll daily under `%APPDATA%\ClaudeMiniAlert\logs\` and are kept for 7 days.
 
 | Section   | Keys |
 |-----------|------|
-| `Hud`     | `RefreshIntervalMs`, `Theme` (Dark/Light/Auto), `Opacity` (60–100, background only), `Font`, `IdleMinutes`, `ClaudeProjectsRoot`, `HandoverDir`, `MaxSessions`, `ActiveWindowMinutes`, `EndedHideMinutes`, `DayStartHour` (start of the "today" cost bucket) |
+| `Hud`     | `RefreshIntervalMs`, `Theme` (Dark/Light/Auto), `Opacity` (60–100, background only), `Font`, `IdleMinutes`, `ClaudeProjectsRoot`, `HandoverDir`, `MaxSessions`, `ActiveWindowMinutes`, `EndedHideMinutes` (0 = an exited session disappears at once), `DayStartHour` (start of the "today" cost bucket) |
 | `Widgets` | `Sessions` (main view) plus optional detail widgets: `Model`, `Context`, `Cost`, `Cpu`, `Ram`, `Session`, `History`, `Notification`, `Usage` |
 | `Alerts`  | context warn/high/critical %, per-alert enable flags (incl. `EnableDecision`) |
 | `Window`  | `Width`, `Mode` (Full/Compact), `Topmost`, last position |

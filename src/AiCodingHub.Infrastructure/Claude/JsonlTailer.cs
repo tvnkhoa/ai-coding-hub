@@ -31,15 +31,6 @@ public sealed class JsonlTailer
     /// <summary>True once every complete line up to the last-seen length has been returned.</summary>
     public bool IsAtEnd { get; private set; } = true;
 
-    /// <summary>Point the tailer at a new file (resets the offset).</summary>
-    public void Reset(string? path)
-    {
-        _path = path;
-        _offset = 0;
-        Length = 0;
-        IsAtEnd = true;
-    }
-
     public IReadOnlyList<string> ReadNewLines(long maxBytes = long.MaxValue)
     {
         var lines = new List<string>();
