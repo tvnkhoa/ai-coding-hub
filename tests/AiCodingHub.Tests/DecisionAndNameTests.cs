@@ -37,6 +37,20 @@ public class DecisionAndNameTests
     }
 
     [Fact]
+    public void Project_Is_The_Launch_Folder_Even_After_The_Session_Changes_Directory()
+    {
+        var events = Fx.Parse(new[]
+        {
+            Fx.User(T0, cwd: @"D:\\Repos\\ai-coding-hub"),
+            Fx.Assistant(T0.AddSeconds(5), "claude-opus-5-5", "m1", "r1", cwd: @"D:\\Repos\\ai-coding-hub\\src\\Widgets"),
+        });
+
+        var snap = TranscriptDeriver.Derive(events, Pricing, TimeSpan.FromMinutes(5), T0.AddSeconds(6));
+
+        Assert.Equal("ai-coding-hub", snap.Session.ProjectName);
+    }
+
+    [Fact]
     public void An_Unanswered_AskUserQuestion_Is_A_Pending_Decision_Until_Answered()
     {
         var asked = Fx.Assistant(T0, "claude-opus-5-5", "m1", "r1", block: AskBlock);

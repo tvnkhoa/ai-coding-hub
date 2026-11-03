@@ -64,7 +64,7 @@ public sealed class SessionAccumulator
             _pending[question.ToolUseId] = (question, ev.Timestamp);
         }
 
-        if (ev.Cwd is not null) _cwd = ev.Cwd;
+        _cwd ??= ev.Cwd; // the launch folder names the project; later `cd`s do not
         if (ev.GitBranch is not null) _branch = ev.GitBranch;
         if (ev.Version is not null) _version = ev.Version;
 

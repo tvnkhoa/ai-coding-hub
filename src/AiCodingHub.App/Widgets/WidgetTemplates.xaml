@@ -205,8 +205,16 @@
 
     <!-- One repo group: clickable header + rows (compact: header only, with a mini bar) -->
     <DataTemplate DataType="{x:Type w:SessionGroupViewModel}">
-        <Border Background="{DynamicResource Hud.Card}" BorderBrush="{DynamicResource Hud.Card.Border}"
-                BorderThickness="1" CornerRadius="9" Padding="6" Margin="0,0,0,8">
+        <StackPanel>
+        <!-- Divider between repo blocks: a quiet hairline; solid accent when a session below needs the owner. -->
+        <Grid x:Name="Divider" Height="14" Margin="16,0" IsHitTestVisible="False">
+            <Rectangle Height="1" VerticalAlignment="Center" Fill="{DynamicResource Hud.Divider}" />
+            <Rectangle x:Name="DecisionLine" Height="1" VerticalAlignment="Center" Fill="{DynamicResource Hud.Accent.Border}"
+                       Visibility="Collapsed" />
+        </Grid>
+        <Grid>
+        <Border x:Name="Card" Background="{DynamicResource Hud.Card}" BorderBrush="{DynamicResource Hud.Card.Border}"
+                BorderThickness="1" CornerRadius="9" Padding="6">
             <StackPanel>
                 <Border x:Name="Header" Background="Transparent" CornerRadius="6" Padding="4,3,6,4" Cursor="Hand">
                     <Border.InputBindings>
@@ -251,7 +259,25 @@
                 <ItemsControl x:Name="Rows" ItemsSource="{Binding Rows}" Focusable="False" />
             </StackPanel>
         </Border>
+        <!-- "Working" orbit: a comet circling the card border while any session here is active.
+             Head = short bright dash; tail = longer faint dash lagging behind it. -->
+        <Rectangle x:Name="OrbitTail" RadiusX="9" RadiusY="9" StrokeThickness="1.5" IsHitTestVisible="False"
+                   Stroke="{DynamicResource Hud.Accent}" Opacity="0.28" StrokeDashCap="Round" Visibility="Collapsed"
+                   b:Orbit.Length="120" b:Orbit.Lag="84" />
+        <Rectangle x:Name="OrbitHead" RadiusX="9" RadiusY="9" StrokeThickness="1.5" IsHitTestVisible="False"
+                   Stroke="{DynamicResource Hud.Accent}" StrokeDashCap="Round" Visibility="Collapsed"
+                   b:Orbit.Length="36" />
+        </Grid>
+        </StackPanel>
         <DataTemplate.Triggers>
+            <DataTrigger Binding="{Binding IsWorking}" Value="True">
+                <Setter TargetName="OrbitTail" Property="Visibility" Value="Visible" />
+                <Setter TargetName="OrbitHead" Property="Visibility" Value="Visible" />
+            </DataTrigger>
+            <!-- no divider above the first block -->
+            <DataTrigger Binding="{Binding RelativeSource={RelativeSource PreviousData}}" Value="{x:Null}">
+                <Setter TargetName="Divider" Property="Visibility" Value="Collapsed" />
+            </DataTrigger>
             <Trigger SourceName="Header" Property="IsMouseOver" Value="True">
                 <Setter TargetName="Header" Property="Background" Value="{DynamicResource Hud.Card.Hover}" />
             </Trigger>
@@ -261,6 +287,10 @@
             </DataTrigger>
             <DataTrigger Binding="{Binding NeedsDecision}" Value="True">
                 <Setter TargetName="GroupDot" Property="Visibility" Value="Visible" />
+                <Setter TargetName="OrbitTail" Property="Visibility" Value="Collapsed" />
+                <Setter TargetName="OrbitHead" Property="Visibility" Value="Collapsed" />
+                <Setter TargetName="DecisionLine" Property="Visibility" Value="Visible" />
+                <Setter TargetName="Card" Property="BorderBrush" Value="{DynamicResource Hud.Accent.Border}" />
                 <DataTrigger.EnterActions>
                     <BeginStoryboard x:Name="GroupPulse">
                         <Storyboard RepeatBehavior="Forever">
@@ -321,7 +351,7 @@
 
     <!-- The dashboard widget -->
     <DataTemplate DataType="{x:Type w:SessionsWidgetViewModel}">
-        <Grid>
+        <Grid Margin="0,0,0,8">
             <ItemsControl ItemsSource="{Binding Groups}" Focusable="False" />
             <StackPanel Margin="0,18,0,22" HorizontalAlignment="Center"
                         Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVis}}">

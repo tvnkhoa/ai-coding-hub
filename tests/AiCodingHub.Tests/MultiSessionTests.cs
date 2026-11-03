@@ -327,7 +327,6 @@ public class ClaudeProviderMultiSessionTests
             Session("D--Work-alpha", "mem-1", "claude-sonnet-5-5", 500_000, @"D:\\Work\\alpha");
             Session("D--Work-alpha", "gone-1", "claude-opus-5-5", 1_000, @"D:\\Work\\alpha");
             Session("D--Scratch-tool", "solo-1", "claude-haiku-4-5", 20_000, @"D:\\Scratch\\tool");
-            File.SetLastWriteTimeUtc(Path.Combine(root, "D--Work-alpha", "gone-1.jsonl"), DateTime.UtcNow.AddHours(-1));
 
             File.WriteAllLines(Path.Combine(handover, ".sessions.jsonl"), new[]
             {
@@ -338,7 +337,7 @@ public class ClaudeProviderMultiSessionTests
             File.WriteAllText(Path.Combine(handover, $".coordinator-{day}-alpha"), "lead-1");
 
             var processes = new FakeProcesses { Foreground = 900 };
-            processes.Alive.UnionWith(new[] { 101, 102 }); // 103 has exited
+            processes.Alive.UnionWith(new[] { 101, 102 }); // 103 has exited: hidden at once, though its transcript is fresh
             processes.Parents[102] = 500; // mem-1's claude.exe → shell 500 → terminal 900
             processes.Parents[500] = 900;
             processes.Parents[101] = 600; // the leader runs in another window

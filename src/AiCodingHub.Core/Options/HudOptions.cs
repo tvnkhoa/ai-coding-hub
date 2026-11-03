@@ -44,8 +44,8 @@ public sealed class HudOptions
     /// </summary>
     public int ActiveWindowMinutes { get; set; } = 30;
 
-    /// <summary>Minutes an ended session (its process exited) stays visible.</summary>
-    public int EndedHideMinutes { get; set; } = 5;
+    /// <summary>Minutes an ended session (its process exited) stays visible; 0 = removed at once.</summary>
+    public int EndedHideMinutes { get; set; }
 
     /// <summary>
     /// Local hour the cost "today" bucket starts (0 = midnight; 4 matches a 04:00→04:00

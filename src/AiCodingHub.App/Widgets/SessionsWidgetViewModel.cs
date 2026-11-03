@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.Linq;
 using AiCodingHub.App.Interop;
 using AiCodingHub.Core.Models;
 using AiCodingHub.Core.Options;
@@ -134,6 +135,9 @@ public sealed partial class SessionGroupViewModel : ObservableObject, IKeyed
     [ObservableProperty] private int _maxLevel;
     [ObservableProperty] private bool _needsDecision;
 
+    /// <summary>Any session here is active: the card border shows the "working" orbit.</summary>
+    [ObservableProperty] private bool _isWorking;
+
     [RelayCommand]
     private void Toggle() => IsExpanded = !IsExpanded;
 
@@ -146,6 +150,7 @@ public sealed partial class SessionGroupViewModel : ObservableObject, IKeyed
         MaxPercentText = $"{group.MaxContextPercent:0}%";
         MaxLevel = SessionsWidgetViewModel.Level(group.MaxContextPercent, opts);
         NeedsDecision = group.NeedsDecision;
+        IsWorking = group.Sessions.Any(s => s.Activity == SessionActivity.Active);
 
         SessionsWidgetViewModel.Sync(Rows, group.Sessions, s => s.SessionId, s => new SessionRowViewModel(s.SessionId),
             (vm, s) => vm.Update(s, opts));

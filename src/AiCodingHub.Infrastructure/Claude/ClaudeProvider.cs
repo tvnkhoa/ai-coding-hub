@@ -127,7 +127,8 @@ public sealed class ClaudeProvider : IClaudeProvider
                 if (_registered.TryGetValue(f.SessionId, out var reg))
                 {
                     var alive = reg.Pid is { } pid ? _alive.GetValueOrDefault(pid, true) : age <= activeWindow;
-                    return alive || age <= endedHide;
+                    // EndedHideMinutes 0 (default): a session leaves the HUD as soon as its process exits.
+                    return alive || (endedHide > TimeSpan.Zero && age <= endedHide);
                 }
                 return age <= activeWindow;
             })
