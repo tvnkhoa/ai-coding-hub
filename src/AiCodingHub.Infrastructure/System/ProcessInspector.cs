@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.InteropServices;
 
 namespace AiCodingHub.Infrastructure.System;
@@ -23,10 +24,84 @@ public interface IProcessInspector
     /// falls back to transcript age).
     /// </summary>
     IReadOnlyList<ClaudeProcess>? ClaudeProcesses() => null;
+
+    /// <summary>
+    /// Parent links, the claude.exe list and liveness from one point-in-time pass (the session
+    /// poll calls this once instead of <see cref="ParentMap"/> + <see cref="ClaudeProcesses"/>).
+    /// </summary>
+    ProcessSnapshot Snapshot() => new(ParentMap(), ClaudeProcesses(), null);
 }
 
 /// <summary>A running claude.exe. <see cref="CommandLine"/> / <see cref="Cwd"/> are null when unreadable.</summary>
 public sealed record ClaudeProcess(int Pid, string? CommandLine, string? Cwd);
+
+/// <summary>
+/// One process pass. <see cref="Live"/> holds the pids that run claude/node (the
+/// <see cref="IProcessInspector.IsAlive"/> rule); null when unknown, then callers ask IsAlive.
+/// </summary>
+public sealed record ProcessSnapshot(
+    IReadOnlyDictionary<int, int> Parents,
+    IReadOnlyList<ClaudeProcess>? Claude,
+    IReadOnlySet<int>? Live)
+{
+    public bool IsAlive(int pid, Func<int, bool> fallback) => Live is { } live ? live.Contains(pid) : fallback(pid);
+}
+
+/// <summary>
+/// claude.exe command line + cwd by (pid, creation time): the PEB is read once per process, and a
+/// reused pid (new creation time) is read again. Pids missing from a pass are evicted. Thread-safe.
+/// The cwd is cached too: a live check (4 Nov) found claude.exe keeps its start cwd.
+/// </summary>
+public sealed class ProcessParameterCache
+{
+    private readonly object _gate = new();
+    private readonly Dictionary<int, (long Created, string? CommandLine, string? Cwd)> _byPid = new();
+
+    public int Count
+    {
+        get { lock (_gate) { return _byPid.Count; } }
+    }
+
+    /// <summary>
+    /// The claude.exe list (see <see cref="ProcessInspector.Collect"/>). <paramref name="created"/>
+    /// returns the creation time or null (then nothing is cached for that pid); unreadable results
+    /// are not cached.
+    /// </summary>
+    public IReadOnlyList<ClaudeProcess>? Collect(
+        IReadOnlyCollection<int> pids,
+        Func<int, long?> created,
+        Func<int, (string? CommandLine, string? Cwd)> read)
+    {
+        lock (_gate)
+        {
+            var present = new HashSet<int>(pids);
+            foreach (var gone in _byPid.Keys.Where(k => !present.Contains(k)).ToList())
+            {
+                _byPid.Remove(gone);
+            }
+
+            return ProcessInspector.Collect(pids, pid =>
+            {
+                var at = created(pid);
+                if (at is { } t && _byPid.TryGetValue(pid, out var hit) && hit.Created == t)
+                {
+                    return (hit.CommandLine, hit.Cwd);
+                }
+
+                var value = read(pid);
+                if (at is { } t2 && (value.CommandLine is not null || value.Cwd is not null))
+                {
+                    _byPid[pid] = (t2, value.CommandLine, value.Cwd);
+                }
+                else
+                {
+                    _byPid.Remove(pid);
+                }
+                return value;
+            });
+        }
+    }
+}
 
 /// <summary>Win32 implementation (Toolhelp snapshot + GetForegroundWindow). Best-effort; never throws.</summary>
 public sealed class ProcessInspector : IProcessInspector
@@ -56,13 +131,42 @@ public sealed class ProcessInspector : IProcessInspector
         }
     }
 
-    public IReadOnlyDictionary<int, int> ParentMap()
+    private readonly ProcessParameterCache _parameters = new();
+
+    public IReadOnlyDictionary<int, int> ParentMap() => Walk().Parents;
+
+    /// <summary>
+    /// One Toolhelp pass: parent links, claude/node pids, and the claude.exe list with command line
+    /// and cwd from the PEB (cached per pid + creation time). Never throws.
+    /// </summary>
+    public ProcessSnapshot Snapshot()
+    {
+        var (parents, claudePids, live, complete) = Walk();
+        IReadOnlyList<ClaudeProcess>? claude = null;
+        if (complete && Environment.Is64BitProcess)
+        {
+            try
+            {
+                claude = _parameters.Collect(claudePids, CreationTime, ReadParameters);
+            }
+            catch (Exception)
+            {
+                claude = null;
+            }
+        }
+        return new ProcessSnapshot(parents, claude, complete ? live : null);
+    }
+
+    /// <summary>Toolhelp walk; <c>Complete</c> is false when it failed (the parent map may be partial).</summary>
+    private static (Dictionary<int, int> Parents, List<int> ClaudePids, HashSet<int> Live, bool Complete) Walk()
     {
         var map = new Dictionary<int, int>();
+        var claude = new List<int>();
+        var live = new HashSet<int>();
         var snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
         if (snapshot == IntPtr.Zero || snapshot == new IntPtr(-1))
         {
-            return map;
+            return (map, claude, live, false);
         }
 
         try
@@ -70,25 +174,38 @@ public sealed class ProcessInspector : IProcessInspector
             var entry = new PROCESSENTRY32W { dwSize = (uint)Marshal.SizeOf<PROCESSENTRY32W>() };
             if (!Process32FirstW(snapshot, ref entry))
             {
-                return map;
+                return (map, claude, live, false);
             }
 
             do
             {
-                map[(int)entry.th32ProcessID] = (int)entry.th32ParentProcessID;
+                var pid = (int)entry.th32ProcessID;
+                map[pid] = (int)entry.th32ParentProcessID;
+                var exe = entry.szExeFile ?? "";
+                if (string.Equals(exe, "claude.exe", StringComparison.OrdinalIgnoreCase))
+                {
+                    claude.Add(pid);
+                }
+
+                // Same rule as IsAlive (guards against pid reuse).
+                if (exe.Contains("claude", StringComparison.OrdinalIgnoreCase)
+                    || exe.Contains("node", StringComparison.OrdinalIgnoreCase))
+                {
+                    live.Add(pid);
+                }
             }
             while (Process32NextW(snapshot, ref entry));
         }
         catch (Exception)
         {
-            // partial map is fine
+            return (map, claude, live, false);
         }
         finally
         {
             CloseHandle(snapshot);
         }
 
-        return map;
+        return (map, claude, live, true);
     }
 
     public int? ForegroundProcessId()
@@ -111,51 +228,10 @@ public sealed class ProcessInspector : IProcessInspector
     }
 
     /// <summary>
-    /// Toolhelp snapshot filtered to claude.exe, then each process's command line and current
-    /// directory read from its PEB (same-user processes need no admin). x64 only.
+    /// Every running claude.exe with its command line and current directory read from its PEB
+    /// (same-user processes need no admin). x64 only.
     /// </summary>
-    public IReadOnlyList<ClaudeProcess>? ClaudeProcesses()
-    {
-        if (!Environment.Is64BitProcess)
-        {
-            return null;
-        }
-
-        var pids = new List<int>();
-        var snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-        if (snapshot == IntPtr.Zero || snapshot == new IntPtr(-1))
-        {
-            return null;
-        }
-
-        try
-        {
-            var entry = new PROCESSENTRY32W { dwSize = (uint)Marshal.SizeOf<PROCESSENTRY32W>() };
-            if (!Process32FirstW(snapshot, ref entry))
-            {
-                return null;
-            }
-
-            do
-            {
-                if (string.Equals(entry.szExeFile, "claude.exe", StringComparison.OrdinalIgnoreCase))
-                {
-                    pids.Add((int)entry.th32ProcessID);
-                }
-            }
-            while (Process32NextW(snapshot, ref entry));
-        }
-        catch (Exception)
-        {
-            return null;
-        }
-        finally
-        {
-            CloseHandle(snapshot);
-        }
-
-        return Collect(pids, ReadParameters);
-    }
+    public IReadOnlyList<ClaudeProcess>? ClaudeProcesses() => Snapshot().Claude;
 
     /// <summary>
     /// The claude.exe list from their pids, or null when there are none: Claude Code may run under
@@ -176,6 +252,25 @@ public sealed class ProcessInspector : IProcessInspector
             result.Add(new ClaudeProcess(pid, commandLine, cwd));
         }
         return result;
+    }
+
+    /// <summary>Process creation time (FILETIME), or null when the process cannot be opened.</summary>
+    private static long? CreationTime(int pid)
+    {
+        var handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, (uint)pid);
+        if (handle == IntPtr.Zero)
+        {
+            return null;
+        }
+
+        try
+        {
+            return GetProcessTimes(handle, out var created, out _, out _, out _) ? created : null;
+        }
+        finally
+        {
+            CloseHandle(handle);
+        }
     }
 
     private static (string? CommandLine, string? Cwd) ReadParameters(int pid)
@@ -323,6 +418,9 @@ public sealed class ProcessInspector : IProcessInspector
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern IntPtr OpenProcess(uint access, bool inheritHandle, uint processId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GetProcessTimes(IntPtr process, out long creation, out long exit, out long kernel, out long user);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool IsWow64Process(IntPtr process, out bool wow64);

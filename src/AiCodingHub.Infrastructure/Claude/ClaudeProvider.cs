@@ -118,12 +118,15 @@ public sealed class ClaudeProvider : IClaudeProvider
         }
 
         _registered = _registry.ReadToday(now);
+
+        // One process pass per poll: parent links, liveness and the claude.exe list (PEB reads cached).
+        var processes = _processes.Snapshot();
         _alive = _registered.Values
             .Where(r => r.Pid is not null)
             .Select(r => r.Pid!.Value)
             .Distinct()
-            .ToDictionary(pid => pid, _processes.IsAlive);
-        _parents = _processes.ParentMap();
+            .ToDictionary(pid => pid, pid => processes.IsAlive(pid, _processes.IsAlive));
+        _parents = processes.Parents;
 
         var activeWindow = TimeSpan.FromMinutes(Math.Max(1, opts.ActiveWindowMinutes));
         var endedHide = TimeSpan.FromMinutes(Math.Max(0, opts.EndedHideMinutes));
@@ -146,7 +149,7 @@ public sealed class ClaudeProvider : IClaudeProvider
             .ToList();
 
         // Sessions missing from the registry have no pid: match them to running claude.exe instead.
-        _claudeProcesses = wanted.Any(f => !_registered.ContainsKey(f.SessionId)) ? _processes.ClaudeProcesses() : null;
+        _claudeProcesses = processes.Claude;
 
         var keep = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var file in wanted)
@@ -424,8 +427,9 @@ public sealed class ClaudeProvider : IClaudeProvider
             return false;
         }
 
-        static string Norm(string s) => s.Replace('/', '\\').TrimEnd('\\');
-        return string.Equals(Norm(a), Norm(b), StringComparison.OrdinalIgnoreCase);
+        // 8.3 short names, subst drives and junctions are not resolved.
+        return string.Equals(WorktreeRepoResolver.NormalizePath(a), WorktreeRepoResolver.NormalizePath(b),
+            StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

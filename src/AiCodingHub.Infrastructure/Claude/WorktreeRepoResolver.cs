@@ -29,8 +29,9 @@ public static class WorktreeRepoResolver
 
         try
         {
-            var full = Path.GetFullPath(cwd);
-            if (Directory.Exists(full))
+            var full = NormalizePath(cwd);
+            // A disconnected share can block Directory.Exists for seconds: name it from the folder only.
+            if (!IsNetworkPath(full) && Directory.Exists(full))
             {
                 return FromGit(full);
             }
@@ -48,6 +49,57 @@ public static class WorktreeRepoResolver
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Full path without a <c>\\?\</c> prefix (<c>\\?\UNC\s\x</c> → <c>\\s\x</c>), backslashes, no
+    /// trailing separator. 8.3 names, subst drives and junctions are not resolved. Never throws.
+    /// </summary>
+    public static string NormalizePath(string path)
+    {
+        var p = path.Trim().Replace('/', '\\');
+        if (p.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase))
+        {
+            p = @"\\" + p[8..];
+        }
+        else if (p.StartsWith(@"\\?\", StringComparison.Ordinal))
+        {
+            p = p[4..];
+        }
+
+        try
+        {
+            p = Path.GetFullPath(p);
+        }
+        catch (Exception)
+        {
+            // keep as is
+        }
+
+        var root = Path.GetPathRoot(p) ?? "";
+        return p.Length > root.Length ? p.TrimEnd('\\') : p;
+    }
+
+    /// <summary>
+    /// True for a UNC path or a drive mapped to a network share: the file system is not probed
+    /// there on the poll. Never throws.
+    /// </summary>
+    public static bool IsNetworkPath(string fullPath)
+    {
+        if (fullPath.StartsWith(@"\\", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        try
+        {
+            return fullPath.Length >= 2 && fullPath[1] == ':'
+                && new DriveInfo(fullPath[..1]).DriveType == DriveType.Network;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
 
     private static (string Repo, bool IsWorktree)? FromGit(string start)
