@@ -73,7 +73,11 @@ several polls; meanwhile a tail peek (last ~1 MB) supplies the current context %
 Roles come from the owner's working-day hook (read-only): `~/.claude/handover/.sessions.jsonl`
 (session → repo, day, claude.exe pid) and `.coordinator-<day>-<repo>` (leader session id); see
 `HandoverRegistryReader`. The pid also gives liveness and the focused-window highlight
-(`ProcessInspector`). The result is `ClaudeSnapshot.Groups` (repo → sessions, leader first); the
+(`ProcessInspector`). A session missing from the registry is matched to a running `claude.exe`
+instead (its command line names the session id, or a bare `claude` runs in the transcript cwd,
+read from the PEB); none → Ended and hidden like a registered dead one. Its group is named from
+git's common dir like the hook (`WorktreeRepoResolver`), so a linked worktree — or a removed
+`<repo>-wt-<x>` on branch `wt/<x>` — joins its main repo as a member. The result is `ClaudeSnapshot.Groups` (repo → sessions, leader first); the
 positional fields describe a *primary* session (focused, else most recent) for history.
 Context alerts are evaluated per session; a session with an unanswered `AskUserQuestion` /
 `ExitPlanMode` carries a `DecisionRequest` ("needs you" strip, bell, Windows notification).

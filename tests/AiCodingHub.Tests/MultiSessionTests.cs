@@ -298,9 +298,149 @@ public class ClaudeProviderMultiSessionTests
         public Dictionary<int, int> Parents { get; } = new();
         public int? Foreground { get; set; }
 
+        public List<ClaudeProcess>? Claude { get; set; }
+
         public bool IsAlive(int pid) => Alive.Contains(pid);
         public IReadOnlyDictionary<int, int> ParentMap() => Parents;
         public int? ForegroundProcessId() => Foreground;
+        public IReadOnlyList<ClaudeProcess>? ClaudeProcesses() => Claude;
+    }
+
+    private static string Json(string path) => path.Replace("\\", "\\\\");
+
+    private static void Transcript(string root, string id, string cwd, DateTimeOffset now, string? branch = null)
+    {
+        var dir = Directory.CreateDirectory(Path.Combine(root, "P-" + id)).FullName;
+        var b = branch is null ? "" : $",\"gitBranch\":\"{branch}\"";
+        File.WriteAllLines(Path.Combine(dir, id + ".jsonl"), new[]
+        {
+            $$$"""{"type":"user","timestamp":"{{{now.AddMinutes(-2):O}}}","cwd":"{{{Json(cwd)}}}"{{{b}}},"message":{"role":"user","content":"hi"}}""",
+            Fx.Assistant(now.AddMinutes(-1), "claude-opus-5-5", "m-" + id, "r-" + id, cwd: Json(cwd)),
+        });
+    }
+
+    private static ClaudeProvider Provider(string root, string handover, FakeProcesses processes, DateTimeOffset now, int endedHide = 0) =>
+        new(new TestOptionsMonitor<HudOptions>(new HudOptions { ClaudeProjectsRoot = root, HandoverDir = handover, EndedHideMinutes = endedHide }),
+            new ModelCatalog(), new FakeTimeProvider(now), processes,
+            NullLogger<ClaudeProvider>.Instance, new ClaudeSettingsReader(Path.Combine(handover, "no-settings.json")));
+
+    [Fact]
+    public async Task Unregistered_Worktree_Session_Joins_Its_Main_Repo_As_Member()
+    {
+        var root = Fx.TempDir();
+        var handover = Fx.TempDir();
+        var work = Fx.TempDir();
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            var day = HandoverRegistryReader.WorkingDay(now);
+
+            // <work>/mainrepo/.git/worktrees/ix  ←  <work>/mainrepo-wt-ix/.git (file)
+            var main = Directory.CreateDirectory(Path.Combine(work, "mainrepo")).FullName;
+            var gitDir = Directory.CreateDirectory(Path.Combine(main, ".git", "worktrees", "ix")).FullName;
+            File.WriteAllText(Path.Combine(gitDir, "commondir"), "../..\n");
+            var wt = Directory.CreateDirectory(Path.Combine(work, "mainrepo-wt-ix")).FullName;
+            File.WriteAllText(Path.Combine(wt, ".git"), "gitdir: " + gitDir.Replace('\\', '/') + "\n");
+
+            Transcript(root, "lead-1", main, now);
+            Transcript(root, "wt-1", wt, now, "wt/ix");
+            File.WriteAllLines(Path.Combine(handover, ".sessions.jsonl"), new[]
+            {
+                $$"""{"session":"lead-1","repo":"mainrepo","day":"{{day}}","at":"{{now.AddHours(-1):O}}","pid":101}""",
+            });
+            File.WriteAllText(Path.Combine(handover, $".coordinator-{day}-mainrepo"), "lead-1");
+
+            var processes = new FakeProcesses
+            {
+                Claude = new() { new ClaudeProcess(77, "claude.exe --session-id wt-1 \"go\"", wt) },
+            };
+            processes.Alive.Add(101);
+
+            var snap = await Provider(root, handover, processes, now).GetAsync();
+
+            var group = Assert.Single(snap.Groups);
+            Assert.Equal("mainrepo", group.Name);
+            Assert.Equal(new[] { "lead-1", "wt-1" }, group.Sessions.Select(s => s.SessionId));
+            Assert.Equal(SessionRole.Leader, group.Sessions[0].Role);
+            Assert.Equal(SessionRole.Member, group.Sessions[1].Role);
+            Assert.Equal(77, group.Sessions[1].Pid);
+            Assert.NotEqual(SessionActivity.Ended, group.Sessions[1].Activity);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+            Directory.Delete(handover, true);
+            Directory.Delete(work, true);
+        }
+    }
+
+    [Fact]
+    public async Task Removed_Worktree_Falls_Back_To_The_Wt_Folder_Name_And_Branch()
+    {
+        var root = Fx.TempDir();
+        var handover = Fx.TempDir();
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            var gone = Path.Combine(handover, "missing", "mcp-local-wt-index-core");
+            Transcript(root, "wt-2", gone, now, "wt/index-core");
+            Transcript(root, "odd-1", Path.Combine(handover, "missing", "x-wt-a"), now, "main"); // branch does not match
+
+            var snap = await Provider(root, handover, new FakeProcesses(), now).GetAsync(); // no process list: age rule
+
+            var names = snap.Groups.Select(g => g.Name).ToList();
+            Assert.Contains("mcp-local", names);
+            Assert.Contains("x-wt-a", names);
+            var row = snap.Groups.Single(g => g.Name == "mcp-local").Sessions.Single();
+            Assert.Equal(SessionRole.Member, row.Role);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+            Directory.Delete(handover, true);
+        }
+    }
+
+    [Fact]
+    public async Task Unregistered_Session_Without_A_Matching_Process_Is_Ended_And_Hidden()
+    {
+        var root = Fx.TempDir();
+        var handover = Fx.TempDir();
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            Transcript(root, "dead-1", @"D:\Work\dead", now);
+            Transcript(root, "bare-1", @"D:\Work\bare", now);
+
+            var processes = new FakeProcesses
+            {
+                Claude = new()
+                {
+                    new ClaudeProcess(10, "claude.exe", @"D:\Work\bare\"),                               // bare claude in bare-1's cwd
+                    new ClaudeProcess(11, "claude.exe --session-id 0d48c265-0000-0000-0000-000000000000", @"D:\Work\dead"), // bound elsewhere
+                },
+            };
+
+            var snap = await Provider(root, handover, processes, now).GetAsync();
+            var row = snap.Groups.SelectMany(g => g.Sessions).Single();
+            Assert.Equal("bare-1", row.SessionId);
+            Assert.Equal(10, row.Pid);
+
+            // EndedHideMinutes keeps an exited one visible for a while, marked Ended.
+            var lingering = await Provider(root, handover, processes, now, endedHide: 5).GetAsync();
+            var dead = lingering.Groups.SelectMany(g => g.Sessions).Single(s => s.SessionId == "dead-1");
+            Assert.Equal(SessionActivity.Ended, dead.Activity);
+
+            // A process that cannot be read means "cannot tell": the transcript-age rule stands.
+            processes.Claude.Add(new ClaudeProcess(12, null, null));
+            var unknown = await Provider(root, handover, processes, now).GetAsync();
+            Assert.Equal(2, unknown.Groups.SelectMany(g => g.Sessions).Count());
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+            Directory.Delete(handover, true);
+        }
     }
 
     [Fact]

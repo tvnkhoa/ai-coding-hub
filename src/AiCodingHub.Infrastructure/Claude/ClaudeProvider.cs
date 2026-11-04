@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using AiCodingHub.Core.Abstractions;
@@ -49,7 +50,12 @@ public sealed class ClaudeProvider : IClaudeProvider
     private DecisionMarkerReader? _markers;
     private string? _markerDir;
     private IReadOnlyDictionary<int, int> _parents = new Dictionary<int, int>();
+    private IReadOnlyList<ClaudeProcess>? _claudeProcesses;
+    private readonly Dictionary<string, (string Repo, bool IsWorktree)?> _repoByCwd = new(StringComparer.OrdinalIgnoreCase);
     private DateTimeOffset _lastDiscovery = DateTimeOffset.MinValue;
+
+    private static readonly Regex ClaimsSession = new(
+        @"(?:--session-id|--resume|-r)[\s=]+""?[0-9a-f]{8}-[0-9a-f]{4}-", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     public ClaudeProvider(
         IOptionsMonitor<HudOptions> options,
@@ -138,6 +144,9 @@ public sealed class ClaudeProvider : IClaudeProvider
             .Take(Math.Max(1, opts.MaxSessions))
             .ToList();
 
+        // Sessions missing from the registry have no pid: match them to running claude.exe instead.
+        _claudeProcesses = wanted.Any(f => !_registered.ContainsKey(f.SessionId)) ? _processes.ClaudeProcesses() : null;
+
         var keep = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var file in wanted)
         {
@@ -183,6 +192,7 @@ public sealed class ClaudeProvider : IClaudeProvider
         }
 
         var idle = TimeSpan.FromMinutes(Math.Max(1, opts.IdleMinutes));
+        var endedHide = TimeSpan.FromMinutes(Math.Max(0, opts.EndedHideMinutes));
         var foreground = _processes.ForegroundProcessId();
         if (_markers is null || !string.Equals(_markerDir, opts.DecisionMarkerDir, StringComparison.OrdinalIgnoreCase))
         {
@@ -211,19 +221,45 @@ public sealed class ClaudeProvider : IClaudeProvider
                 lastActivity = lastWrite; // tool output lines may lack timestamps
             }
 
-            var ended = reg?.Pid is { } pid && !_alive.GetValueOrDefault(pid, true);
+            bool ended;
+            int? pid;
+            var role = reg?.Role ?? SessionRole.None;
+            string group;
+            if (reg is not null)
+            {
+                pid = reg.Pid;
+                ended = reg.Pid is { } p && !_alive.GetValueOrDefault(p, true);
+                group = reg.Repo;
+            }
+            else
+            {
+                var (alive, matched) = MatchProcess(_claudeProcesses, tracker.File.SessionId, snap.Session.Workspace);
+                pid = matched;
+                ended = alive == false;
+                if (ended && !(endedHide > TimeSpan.Zero && now - lastWrite <= endedHide))
+                {
+                    continue; // its process exited: hidden like a registered dead session
+                }
+
+                var repo = ResolveRepo(snap.Session.Workspace, snap.Session.Branch);
+                group = repo?.Repo
+                    ?? (snap.Session.ProjectName is { Length: > 0 } pn && pn != "—" ? pn : tracker.File.ProjectDir);
+                if (repo is { IsWorktree: true })
+                {
+                    role = SessionRole.Member; // a worktree session joins its main repo, never as leader
+                }
+            }
+
             var activity = ended ? SessionActivity.Ended
                 : now - lastActivity > idle ? SessionActivity.Idle
                 : SessionActivity.Active;
 
-            var group = reg?.Repo
-                ?? (snap.Session.ProjectName is { Length: > 0 } p && p != "—" ? p : tracker.File.ProjectDir);
             var model = snap.Session.Model;
 
             var summary = new SessionSummary(
                 SessionId: tracker.File.SessionId,
                 Group: group,
-                Role: reg?.Role ?? SessionRole.None,
+                Role: role,
                 Model: model,
                 ModelLabel: model == "—" ? "—" : _pricing.Resolve(model).Label,
                 ProjectName: snap.Session.ProjectName,
@@ -234,7 +270,7 @@ public sealed class ClaudeProvider : IClaudeProvider
                 Requests: snap.Requests.Requests,
                 StartedAt: snap.Session.StartedAt,
                 LastActivityAt: lastActivity,
-                Pid: reg?.Pid,
+                Pid: pid,
                 IsFocused: false,
                 Activity: activity,
                 Name: snap.Name,
@@ -277,6 +313,82 @@ public sealed class ClaudeProvider : IClaudeProvider
         }
 
         return primary.Snapshot with { Groups = groups };
+    }
+
+    /// <summary>Repo of an unregistered session's cwd, cached (the cwd of a removed worktree keeps its answer).</summary>
+    private (string Repo, bool IsWorktree)? ResolveRepo(string workspace, string branch)
+    {
+        var key = workspace + "|" + branch;
+        if (!_repoByCwd.TryGetValue(key, out var repo))
+        {
+            repo = WorktreeRepoResolver.Resolve(workspace, branch == "—" ? null : branch);
+            if (_repoByCwd.Count > 512)
+            {
+                _repoByCwd.Clear();
+            }
+            _repoByCwd[key] = repo;
+        }
+        return repo;
+    }
+
+    /// <summary>
+    /// Liveness of a session missing from the registry: a claude.exe whose command line names the
+    /// session id, else one that names no session (a bare <c>claude</c>) running in the same cwd.
+    /// Alive null = cannot tell (enumeration failed, or a process could not be read), so the
+    /// transcript-age rule stands. Pid is set when exactly one process matches.
+    /// </summary>
+    internal static (bool? Alive, int? Pid) MatchProcess(IReadOnlyList<ClaudeProcess>? processes, string sessionId, string? cwd)
+    {
+        if (processes is null)
+        {
+            return (null, null);
+        }
+
+        foreach (var p in processes)
+        {
+            if (p.CommandLine?.Contains(sessionId, StringComparison.OrdinalIgnoreCase) == true)
+            {
+                return (true, p.Pid);
+            }
+        }
+
+        var byCwd = new List<int>();
+        var unreadable = false;
+        foreach (var p in processes)
+        {
+            if (p.CommandLine is null && p.Cwd is null)
+            {
+                unreadable = true;
+                continue;
+            }
+
+            if (p.CommandLine is { } cl && ClaimsSession.IsMatch(cl))
+            {
+                continue; // bound to another session
+            }
+
+            if (SamePath(p.Cwd, cwd))
+            {
+                byCwd.Add(p.Pid);
+            }
+        }
+
+        if (byCwd.Count > 0)
+        {
+            return (true, byCwd.Count == 1 ? byCwd[0] : null);
+        }
+        return unreadable ? (null, null) : (false, null);
+    }
+
+    private static bool SamePath(string? a, string? b)
+    {
+        if (string.IsNullOrWhiteSpace(a) || string.IsNullOrWhiteSpace(b))
+        {
+            return false;
+        }
+
+        static string Norm(string s) => s.Replace('/', '\\').TrimEnd('\\');
+        return string.Equals(Norm(a), Norm(b), StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

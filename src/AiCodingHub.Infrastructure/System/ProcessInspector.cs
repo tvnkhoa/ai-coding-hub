@@ -16,7 +16,17 @@ public interface IProcessInspector
 
     /// <summary>PID owning the foreground window, or null.</summary>
     int? ForegroundProcessId();
+
+    /// <summary>
+    /// Every running <c>claude.exe</c> with its command line and working directory, or null when
+    /// they cannot be enumerated (then liveness of sessions missing from the handover registry
+    /// falls back to transcript age).
+    /// </summary>
+    IReadOnlyList<ClaudeProcess>? ClaudeProcesses() => null;
 }
+
+/// <summary>A running claude.exe. <see cref="CommandLine"/> / <see cref="Cwd"/> are null when unreadable.</summary>
+public sealed record ClaudeProcess(int Pid, string? CommandLine, string? Cwd);
 
 /// <summary>Win32 implementation (Toolhelp snapshot + GetForegroundWindow). Best-effort; never throws.</summary>
 public sealed class ProcessInspector : IProcessInspector
@@ -100,6 +110,136 @@ public sealed class ProcessInspector : IProcessInspector
         }
     }
 
+    /// <summary>
+    /// Toolhelp snapshot filtered to claude.exe, then each process's command line and current
+    /// directory read from its PEB (same-user processes need no admin). x64 only.
+    /// </summary>
+    public IReadOnlyList<ClaudeProcess>? ClaudeProcesses()
+    {
+        if (!Environment.Is64BitProcess)
+        {
+            return null;
+        }
+
+        var pids = new List<int>();
+        var snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if (snapshot == IntPtr.Zero || snapshot == new IntPtr(-1))
+        {
+            return null;
+        }
+
+        try
+        {
+            var entry = new PROCESSENTRY32W { dwSize = (uint)Marshal.SizeOf<PROCESSENTRY32W>() };
+            if (!Process32FirstW(snapshot, ref entry))
+            {
+                return null;
+            }
+
+            do
+            {
+                if (string.Equals(entry.szExeFile, "claude.exe", StringComparison.OrdinalIgnoreCase))
+                {
+                    pids.Add((int)entry.th32ProcessID);
+                }
+            }
+            while (Process32NextW(snapshot, ref entry));
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+        finally
+        {
+            CloseHandle(snapshot);
+        }
+
+        var result = new List<ClaudeProcess>(pids.Count);
+        foreach (var pid in pids)
+        {
+            var (commandLine, cwd) = ReadParameters(pid);
+            result.Add(new ClaudeProcess(pid, commandLine, cwd));
+        }
+        return result;
+    }
+
+    private static (string? CommandLine, string? Cwd) ReadParameters(int pid)
+    {
+        var handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, false, (uint)pid);
+        if (handle == IntPtr.Zero)
+        {
+            return (null, null);
+        }
+
+        try
+        {
+            if (IsWow64Process(handle, out var wow64) && wow64)
+            {
+                return (null, null); // 32-bit target: different PEB layout
+            }
+
+            var pbi = new PROCESS_BASIC_INFORMATION();
+            if (NtQueryInformationProcess(handle, 0, ref pbi, Marshal.SizeOf<PROCESS_BASIC_INFORMATION>(), out _) != 0
+                || pbi.PebBaseAddress == IntPtr.Zero)
+            {
+                return (null, null);
+            }
+
+            // PEB+0x20 → RTL_USER_PROCESS_PARAMETERS; +0x38 CurrentDirectory.DosPath, +0x70 CommandLine.
+            if (ReadPointer(handle, pbi.PebBaseAddress + 0x20) is not { } parameters)
+            {
+                return (null, null);
+            }
+
+            var cwd = ReadUnicodeString(handle, parameters + 0x38);
+            var commandLine = ReadUnicodeString(handle, parameters + 0x70);
+            return (commandLine, cwd);
+        }
+        catch (Exception)
+        {
+            return (null, null);
+        }
+        finally
+        {
+            CloseHandle(handle);
+        }
+    }
+
+    private static IntPtr? ReadPointer(IntPtr process, IntPtr address)
+    {
+        var buffer = new byte[8];
+        if (!ReadProcessMemory(process, address, buffer, buffer.Length, out var read) || read != buffer.Length)
+        {
+            return null;
+        }
+        var value = new IntPtr(BitConverter.ToInt64(buffer, 0));
+        return value == IntPtr.Zero ? null : value;
+    }
+
+    private static string? ReadUnicodeString(IntPtr process, IntPtr address)
+    {
+        // UNICODE_STRING (x64): ushort Length, ushort MaximumLength, 4 bytes padding, PWSTR Buffer.
+        var header = new byte[16];
+        if (!ReadProcessMemory(process, address, header, header.Length, out var read) || read != header.Length)
+        {
+            return null;
+        }
+
+        var length = BitConverter.ToUInt16(header, 0);
+        var buffer = new IntPtr(BitConverter.ToInt64(header, 8));
+        if (length == 0 || buffer == IntPtr.Zero)
+        {
+            return null;
+        }
+
+        var chars = new byte[length];
+        if (!ReadProcessMemory(process, buffer, chars, chars.Length, out read) || read != chars.Length)
+        {
+            return null;
+        }
+        return global::System.Text.Encoding.Unicode.GetString(chars);
+    }
+
     /// <summary>True when <paramref name="ancestor"/> is <paramref name="pid"/> or one of its parents.</summary>
     public static bool IsAncestor(IReadOnlyDictionary<int, int> parents, int ancestor, int pid)
     {
@@ -151,6 +291,32 @@ public sealed class ProcessInspector : IProcessInspector
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool CloseHandle(IntPtr handle);
+
+    private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+    private const uint PROCESS_VM_READ = 0x0010;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PROCESS_BASIC_INFORMATION
+    {
+        public IntPtr ExitStatus;
+        public IntPtr PebBaseAddress;
+        public IntPtr AffinityMask;
+        public IntPtr BasePriority;
+        public IntPtr UniqueProcessId;
+        public IntPtr InheritedFromUniqueProcessId;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr OpenProcess(uint access, bool inheritHandle, uint processId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool IsWow64Process(IntPtr process, out bool wow64);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool ReadProcessMemory(IntPtr process, IntPtr address, byte[] buffer, int size, out int read);
+
+    [DllImport("ntdll.dll")]
+    private static extern int NtQueryInformationProcess(IntPtr process, int infoClass, ref PROCESS_BASIC_INFORMATION info, int size, out int returned);
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
