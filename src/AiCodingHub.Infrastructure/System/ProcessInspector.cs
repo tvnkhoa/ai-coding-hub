@@ -154,10 +154,25 @@ public sealed class ProcessInspector : IProcessInspector
             CloseHandle(snapshot);
         }
 
+        return Collect(pids, ReadParameters);
+    }
+
+    /// <summary>
+    /// The claude.exe list from their pids, or null when there are none: Claude Code may run under
+    /// another host (an npm install runs <c>node.exe cli.js</c>), so "no claude.exe" cannot prove
+    /// that a session ended.
+    /// </summary>
+    public static IReadOnlyList<ClaudeProcess>? Collect(IReadOnlyCollection<int> pids, Func<int, (string? CommandLine, string? Cwd)> read)
+    {
+        if (pids.Count == 0)
+        {
+            return null;
+        }
+
         var result = new List<ClaudeProcess>(pids.Count);
         foreach (var pid in pids)
         {
-            var (commandLine, cwd) = ReadParameters(pid);
+            var (commandLine, cwd) = read(pid);
             result.Add(new ClaudeProcess(pid, commandLine, cwd));
         }
         return result;

@@ -409,22 +409,25 @@ public class ClaudeProviderMultiSessionTests
         try
         {
             var now = DateTimeOffset.UtcNow;
+            const string busy = "0d48c265-0000-0000-0000-000000000000";
             Transcript(root, "dead-1", @"D:\Work\dead", now);
             Transcript(root, "bare-1", @"D:\Work\bare", now);
+            Transcript(root, busy, @"D:\Work\dead", now); // still written after dead-1 began
 
             var processes = new FakeProcesses
             {
                 Claude = new()
                 {
-                    new ClaudeProcess(10, "claude.exe", @"D:\Work\bare\"),                               // bare claude in bare-1's cwd
-                    new ClaudeProcess(11, "claude.exe --session-id 0d48c265-0000-0000-0000-000000000000", @"D:\Work\dead"), // bound elsewhere
+                    new ClaudeProcess(10, "claude.exe", @"D:\Work\bare\"),                // bare claude in bare-1's cwd
+                    new ClaudeProcess(11, "claude.exe --session-id " + busy, @"D:\Work\dead"), // accounted for by its own session
                 },
             };
 
             var snap = await Provider(root, handover, processes, now).GetAsync();
-            var row = snap.Groups.SelectMany(g => g.Sessions).Single();
-            Assert.Equal("bare-1", row.SessionId);
-            Assert.Equal(10, row.Pid);
+            var rows = snap.Groups.SelectMany(g => g.Sessions).OrderBy(s => s.SessionId).ToList();
+            Assert.Equal(new[] { busy, "bare-1" }, rows.Select(s => s.SessionId));
+            Assert.Equal(11, rows[0].Pid);
+            Assert.Equal(10, rows[1].Pid);
 
             // EndedHideMinutes keeps an exited one visible for a while, marked Ended.
             var lingering = await Provider(root, handover, processes, now, endedHide: 5).GetAsync();
@@ -434,13 +437,52 @@ public class ClaudeProviderMultiSessionTests
             // A process that cannot be read means "cannot tell": the transcript-age rule stands.
             processes.Claude.Add(new ClaudeProcess(12, null, null));
             var unknown = await Provider(root, handover, processes, now).GetAsync();
-            Assert.Equal(2, unknown.Groups.SelectMany(g => g.Sessions).Count());
+            Assert.Equal(3, unknown.Groups.SelectMany(g => g.Sessions).Count());
         }
         finally
         {
             Directory.Delete(root, true);
             Directory.Delete(handover, true);
         }
+    }
+
+    [Fact]
+    public async Task Resume_Then_Clear_Keeps_The_New_Session_Alive_On_The_Old_Command_Line()
+    {
+        var root = Fx.TempDir();
+        var handover = Fx.TempDir();
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            const string resumed = "11111111-2222-3333-4444-555555555555";
+            Transcript(root, resumed, @"D:\Work\r", now.AddMinutes(-10));
+            File.SetLastWriteTimeUtc(Path.Combine(root, "P-" + resumed, resumed + ".jsonl"), now.AddMinutes(-9).UtcDateTime);
+            Transcript(root, "cleared-1", @"D:\Work\r", now); // /clear: new session, started after the old one stopped
+
+            var processes = new FakeProcesses
+            {
+                Claude = new() { new ClaudeProcess(20, "claude.exe --resume " + resumed, @"D:\Work\r") },
+            };
+
+            var rows = (await Provider(root, handover, processes, now).GetAsync()).Groups.SelectMany(g => g.Sessions).ToList();
+            var cleared = rows.Single(s => s.SessionId == "cleared-1");
+            Assert.Equal(20, cleared.Pid);
+            Assert.NotEqual(SessionActivity.Ended, cleared.Activity);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+            Directory.Delete(handover, true);
+        }
+    }
+
+    [Fact]
+    public void No_Claude_Exe_At_All_Means_Cannot_Tell()
+    {
+        // e.g. an npm install runs node.exe cli.js: an empty list must not end every session.
+        Assert.Null(ProcessInspector.Collect(Array.Empty<int>(), _ => (null, null)));
+        var one = ProcessInspector.Collect(new[] { 5 }, _ => ("claude.exe", @"D:\x"));
+        Assert.Equal(new ClaudeProcess(5, "claude.exe", @"D:\x"), Assert.Single(one!));
     }
 
     [Fact]

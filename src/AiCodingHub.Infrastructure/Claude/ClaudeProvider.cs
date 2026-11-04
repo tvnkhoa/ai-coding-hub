@@ -55,7 +55,8 @@ public sealed class ClaudeProvider : IClaudeProvider
     private DateTimeOffset _lastDiscovery = DateTimeOffset.MinValue;
 
     private static readonly Regex ClaimsSession = new(
-        @"(?:--session-id|--resume|-r)[\s=]+""?[0-9a-f]{8}-[0-9a-f]{4}-", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        @"(?:--session-id|--resume|-r)[\s=]+""?(?<id>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     public ClaudeProvider(
         IOptionsMonitor<HudOptions> options,
@@ -233,7 +234,8 @@ public sealed class ClaudeProvider : IClaudeProvider
             }
             else
             {
-                var (alive, matched) = MatchProcess(_claudeProcesses, tracker.File.SessionId, snap.Session.Workspace);
+                var (alive, matched) = MatchProcess(_claudeProcesses, tracker.File.SessionId, snap.Session.Workspace,
+                    snap.Session.StartedAt, TrackedLastWrite);
                 pid = matched;
                 ended = alive == false;
                 if (ended && !(endedHide > TimeSpan.Zero && now - lastWrite <= endedHide))
@@ -334,10 +336,18 @@ public sealed class ClaudeProvider : IClaudeProvider
     /// <summary>
     /// Liveness of a session missing from the registry: a claude.exe whose command line names the
     /// session id, else one that names no session (a bare <c>claude</c>) running in the same cwd.
+    /// Last, a same-cwd process naming another session X that X no longer accounts for (X is not
+    /// tracked, or its transcript was last written before this session started): <c>claude --resume X</c>
+    /// then <c>/clear</c> keeps X on the command line while writing the new session.
     /// Alive null = cannot tell (enumeration failed, or a process could not be read), so the
     /// transcript-age rule stands. Pid is set when exactly one process matches.
     /// </summary>
-    internal static (bool? Alive, int? Pid) MatchProcess(IReadOnlyList<ClaudeProcess>? processes, string sessionId, string? cwd)
+    internal static (bool? Alive, int? Pid) MatchProcess(
+        IReadOnlyList<ClaudeProcess>? processes,
+        string sessionId,
+        string? cwd,
+        DateTimeOffset? startedAt = null,
+        Func<string, DateTimeOffset?>? trackedLastWrite = null)
     {
         if (processes is null)
         {
@@ -353,6 +363,7 @@ public sealed class ClaudeProvider : IClaudeProvider
         }
 
         var byCwd = new List<int>();
+        var handedOver = new List<int>();
         var unreadable = false;
         foreach (var p in processes)
         {
@@ -362,15 +373,28 @@ public sealed class ClaudeProvider : IClaudeProvider
                 continue;
             }
 
-            if (p.CommandLine is { } cl && ClaimsSession.IsMatch(cl))
+            if (!SamePath(p.Cwd, cwd))
             {
-                continue; // bound to another session
+                continue;
             }
 
-            if (SamePath(p.Cwd, cwd))
+            if (p.CommandLine is { } cl && ClaimsSession.Match(cl) is { Success: true } claim)
             {
-                byCwd.Add(p.Pid);
+                // Bound to another session, unless that session stopped before this one began.
+                var other = trackedLastWrite?.Invoke(claim.Groups["id"].Value);
+                if (other is null || (startedAt is { } start && other < start))
+                {
+                    handedOver.Add(p.Pid);
+                }
+                continue;
             }
+
+            byCwd.Add(p.Pid);
+        }
+
+        if (byCwd.Count == 0)
+        {
+            byCwd = handedOver;
         }
 
         if (byCwd.Count > 0)
@@ -378,6 +402,19 @@ public sealed class ClaudeProvider : IClaudeProvider
             return (true, byCwd.Count == 1 ? byCwd[0] : null);
         }
         return unreadable ? (null, null) : (false, null);
+    }
+
+    /// <summary>Last write of a tracked transcript by session id, or null when it is not tracked.</summary>
+    private DateTimeOffset? TrackedLastWrite(string sessionId)
+    {
+        foreach (var t in _trackers.Values)
+        {
+            if (string.Equals(t.File.SessionId, sessionId, StringComparison.OrdinalIgnoreCase))
+            {
+                return new DateTimeOffset(t.File.LastWriteUtc, TimeSpan.Zero);
+            }
+        }
+        return null;
     }
 
     private static bool SamePath(string? a, string? b)
