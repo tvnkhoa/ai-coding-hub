@@ -267,7 +267,7 @@
                 <Setter TargetName="Race" Property="Visibility" Value="Visible" />
             </DataTrigger>
             <!-- no divider above the first block -->
-            <DataTrigger Binding="{Binding RelativeSource={RelativeSource PreviousData}}" Value="{x:Null}">
+            <DataTrigger Binding="{Binding IsFirst}" Value="True">
                 <Setter TargetName="Divider" Property="Visibility" Value="Collapsed" />
             </DataTrigger>
             <Trigger SourceName="Header" Property="IsMouseOver" Value="True">

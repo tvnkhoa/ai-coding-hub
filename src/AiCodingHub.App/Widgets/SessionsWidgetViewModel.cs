@@ -36,6 +36,11 @@ public sealed partial class SessionsWidgetViewModel : WidgetViewModel
     {
         var opts = _alerts.CurrentValue;
         Sync(Groups, snapshot.Groups, g => g.Name, g => new SessionGroupViewModel(g.Name), (vm, g) => vm.Update(g, opts));
+        for (var i = 0; i < Groups.Count; i++)
+        {
+            Groups[i].IsFirst = i == 0;
+        }
+
         IsEmpty = Groups.Count == 0;
     }
 
@@ -134,6 +139,9 @@ public sealed partial class SessionGroupViewModel : ObservableObject, IKeyed
     [ObservableProperty] private string _maxPercentText = "";
     [ObservableProperty] private int _maxLevel;
     [ObservableProperty] private bool _needsDecision;
+
+    /// <summary>First card in the list: no divider above it. Set after every Sync so Insert/Move/Remove cannot leave it stale.</summary>
+    [ObservableProperty] private bool _isFirst;
 
     /// <summary>Any session here is active: the card border shows the "working" orbit.</summary>
     [ObservableProperty] private bool _isWorking;
