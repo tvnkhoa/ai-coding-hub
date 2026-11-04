@@ -38,7 +38,12 @@ public static class RaceTrack
     private const double YawDecay = 0.28;       // s: how fast the swing dies after the bend
     private const double FishtailPeriod = 0.75; // s: one counter-steer wobble out of the bend
     private const double TrailSeconds = 0.55;   // the trail is where the rear wheels were this long ago
-    private const int TrailSegments = 48;       // pooled line pieces drawing the trail
+    private const int TrailSegments = 48;       // pieces the trail is drawn in (fading with age)
+    private const int TrailBands = 12;          // opacity steps: each band is one polyline
+    private const int AlphaLevels = 32;         // quantised trail opacities (one cached pen each)
+    private const double TrailThickness = 1.8;
+    private const double GlowThickness = 5.5;   // the neon halo: a wide faint stroke under the line
+    private const double GlowAlpha = 0.28;
 
     private static readonly Dictionary<Canvas, Track> Active = new();
     private static readonly Stopwatch Clock = Stopwatch.StartNew();
@@ -107,8 +112,7 @@ public static class RaceTrack
     private sealed class Track
     {
         private readonly Canvas _canvas;
-        private readonly Canvas _trailLayer = new();
-        private readonly Line[] _trailLines = new Line[TrailSegments];
+        private readonly TrailHost _trail = new();
         private readonly List<(double Time, Point Rear)> _history = new();
         private readonly Canvas _car;
         // Heading turns the car about its centre; yaw then pivots it on the front axle, so the
@@ -124,44 +128,40 @@ public static class RaceTrack
             _canvas = canvas;
 
             // The trail traces the rear wheels' real path, so when the tail swings out in a bend the
-            // trail swings out with it into an arc (a light-cycle wall drawn by the car).
-            for (var i = 0; i < TrailSegments; i++)
-            {
-                var line = new Line
-                {
-                    StrokeThickness = 1.8,
-                    StrokeStartLineCap = PenLineCap.Round,
-                    StrokeEndLineCap = PenLineCap.Round,
-                    Visibility = Visibility.Collapsed,
-                };
-                line.SetResourceReference(Shape.StrokeProperty, "Hud.Race");
-                _trailLines[i] = line;
-                _trailLayer.Children.Add(line);
-            }
-            _trailLayer.Effect = _trailGlow;
+            // trail swings out with it into an arc (a light-cycle wall drawn by the car). It is one
+            // visual redrawn per frame; its glow is a wide faint stroke, not a per-frame blur.
 
             // Top-down car pointing along +X, centred on the origin: body, cabin, four wheels.
-            _car = new Canvas { Width = 0, Height = 0 };
-            AddRect(_car, -5.5, -3, 11, 6, 2, "Hud.Race");
-            AddRect(_car, -1.2, -2, 3.2, 4, 1, "Hud.Race.Cabin", opacity: 0.8);   // windscreen / cabin
+            // The glow blur sits on the inner body and the outer canvas is bitmap-cached, so the
+            // blur is rendered once and each frame only moves and turns the cached bitmap.
+            var body = new Canvas { Width = 0, Height = 0, Effect = _carGlow };
+            AddRect(body, -5.5, -3, 11, 6, 2, "Hud.Race");
+            AddRect(body, -1.2, -2, 3.2, 4, 1, "Hud.Race.Cabin", opacity: 0.8);   // windscreen / cabin
             foreach (var (x, y) in new[] { (2.2, -4.1), (2.2, 2.7), (-4.6, -4.1), (-4.6, 2.7) })
             {
-                AddRect(_car, x, y, 2.6, 1.4, 0.6, "Hud.Foreground");
+                AddRect(body, x, y, 2.6, 1.4, 0.6, "Hud.Foreground");
             }
+            _car = new Canvas { Width = 0, Height = 0, CacheMode = new BitmapCache { RenderAtScale = 2 } };
+            _car.Children.Add(body);
             var group = new TransformGroup();
             group.Children.Add(_yaw);
             group.Children.Add(_heading);
             group.Children.Add(_translate);
             _car.RenderTransform = group;
 
-            _car.Effect = _carGlow;
-            canvas.Children.Add(_trailLayer);
+            _trail.SetResourceReference(TrailHost.BrushProperty, "Hud.Race");
+            _trail.BrushChanged += Retint;
+            canvas.Children.Add(_trail);
             canvas.Children.Add(_car);
         }
 
         // Neon glow (Tron light-cycle look); tinted from the theme's race colour on each rebuild.
-        private readonly System.Windows.Media.Effects.DropShadowEffect _trailGlow = new() { ShadowDepth = 0, BlurRadius = 7, Opacity = 0.9 };
         private readonly System.Windows.Media.Effects.DropShadowEffect _carGlow = new() { ShadowDepth = 0, BlurRadius = 8, Opacity = 0.85 };
+        private Color _color;
+        private Pen[] _corePens = Array.Empty<Pen>();
+        private Pen[] _glowPens = Array.Empty<Pen>();
+        private readonly Point[] _points = new Point[TrailSegments + 1];
+        private readonly double[] _alphas = new double[TrailSegments];
 
         private static void AddRect(Canvas parent, double x, double y, double w, double h, double r, string brush, double opacity = 1)
         {
@@ -172,15 +172,23 @@ public static class RaceTrack
             parent.Children.Add(rect);
         }
 
+        /// <summary>Tints the glow and the trail pens from the theme's race colour.</summary>
+        private void Retint()
+        {
+            if (_trail.Brush is not SolidColorBrush race || (_corePens.Length > 0 && race.Color == _color))
+            {
+                return;
+            }
+            _color = race.Color;
+            _carGlow.Color = race.Color;
+            _corePens = MakePens(race.Color, TrailThickness, 1, PenLineCap.Round);
+            _glowPens = MakePens(race.Color, GlowThickness, GlowAlpha, PenLineCap.Flat);
+        }
+
         /// <summary>Recomputes the lap from the card size (the track starts at the top-right bend).</summary>
         public void Rebuild()
         {
-            if (_canvas.TryFindResource("Hud.Race") is SolidColorBrush race)
-            {
-                _trailGlow.Color = race.Color;
-                _carGlow.Color = race.Color;
-            }
-
+            Retint();
             _segments.Clear();
             _history.Clear();
             var w = _canvas.ActualWidth - 2 * Inset;
@@ -301,27 +309,66 @@ public static class RaceTrack
             while (drop < _history.Count - 1 && _history[drop].Time < cutoff) drop++;
             if (drop > 0) _history.RemoveRange(0, drop);
 
-            // Use at most TrailSegments pieces, spread evenly over the history.
+            using var dc = _trail.Visual.RenderOpen();
             var points = _history.Count;
             var pieces = Math.Min(TrailSegments, points - 1);
-            var boost = 0.75 + 0.25 * sideways;
-            for (var i = 0; i < TrailSegments; i++)
+            if (pieces <= 0 || _corePens.Length == 0)
             {
-                var line = _trailLines[i];
-                if (i >= pieces)
-                {
-                    line.Visibility = Visibility.Collapsed;
-                    continue;
-                }
-
-                var a = _history[(int)((long)i * (points - 1) / pieces)];
-                var b = _history[(int)((long)(i + 1) * (points - 1) / pieces)];
-                line.X1 = a.Rear.X; line.Y1 = a.Rear.Y;
-                line.X2 = b.Rear.X; line.Y2 = b.Rear.Y;
-                var age = (now - b.Time) / TrailSeconds;         // 0 at the car, 1 at the tip
-                line.Opacity = Math.Clamp(1 - age, 0, 1) * boost;
-                line.Visibility = Visibility.Visible;
+                return;
             }
+
+            // At most TrailSegments pieces, spread evenly over the history; piece i fades with the
+            // age of its newer end (0 at the car, 1 at the tip). Pieces are drawn in TrailBands
+            // runs, one polyline per run at the run's mean opacity, so joins stay smooth and the
+            // draw count stays small. The wide faint glow pass goes under the core line.
+            var boost = 0.75 + 0.25 * sideways;
+            for (var i = 0; i <= pieces; i++)
+            {
+                var h = _history[(int)((long)i * (points - 1) / pieces)];
+                _points[i] = h.Rear;
+                if (i > 0)
+                {
+                    _alphas[i - 1] = Math.Clamp(1 - (now - h.Time) / TrailSeconds, 0, 1) * boost;
+                }
+            }
+
+            var perBand = (pieces + TrailBands - 1) / TrailBands;
+            for (var pass = 0; pass < 2; pass++)
+            {
+                var pens = pass == 0 ? _glowPens : _corePens;
+                for (var start = 0; start < pieces; start += perBand)
+                {
+                    var end = Math.Min(pieces, start + perBand);
+                    var alpha = 0.0;
+                    for (var k = start; k < end; k++) alpha += _alphas[k];
+                    var level = (int)Math.Round(alpha / (end - start) * (AlphaLevels - 1));
+                    if (level <= 0) continue;
+
+                    var geometry = new StreamGeometry();
+                    using (var g = geometry.Open())
+                    {
+                        g.BeginFigure(_points[start], false, false);
+                        for (var k = start + 1; k <= end; k++) g.LineTo(_points[k], true, true);
+                    }
+                    geometry.Freeze();
+                    dc.DrawGeometry(null, pens[level], geometry);
+                }
+            }
+        }
+
+        /// <summary>One frozen pen per quantised opacity level: no per-frame brush allocations.</summary>
+        private static Pen[] MakePens(Color color, double thickness, double scale, PenLineCap cap)
+        {
+            var pens = new Pen[AlphaLevels];
+            for (var i = 0; i < AlphaLevels; i++)
+            {
+                var brush = new SolidColorBrush(color) { Opacity = scale * i / (AlphaLevels - 1) };
+                brush.Freeze();
+                var pen = new Pen(brush, thickness) { StartLineCap = cap, EndLineCap = cap, LineJoin = PenLineJoin.Round };
+                pen.Freeze();
+                pens[i] = pen;
+            }
+            return pens;
         }
 
         private static double Smooth(double u) => u * u * (3 - 2 * u);
@@ -333,5 +380,30 @@ public static class RaceTrack
             var u3 = u2 * u;
             return (u3 - 2 * u2 + u) * k + (-2 * u3 + 3 * u2) + (u3 - u2) * k;
         }
+    }
+
+    /// <summary>Hosts the trail's single <see cref="DrawingVisual"/>; redrawing it causes no layout.</summary>
+    private sealed class TrailHost : FrameworkElement
+    {
+        /// <summary>The theme's race brush (a resource reference), so a theme switch re-tints at once.</summary>
+        public static readonly DependencyProperty BrushProperty = DependencyProperty.Register(
+            nameof(Brush), typeof(Brush), typeof(TrailHost),
+            new PropertyMetadata(null, (d, _) => ((TrailHost)d).BrushChanged?.Invoke()));
+
+        public Brush? Brush => (Brush?)GetValue(BrushProperty);
+
+        public event Action? BrushChanged;
+
+        public DrawingVisual Visual { get; } = new();
+
+        public TrailHost()
+        {
+            IsHitTestVisible = false;
+            AddVisualChild(Visual);
+        }
+
+        protected override int VisualChildrenCount => 1;
+
+        protected override Visual GetVisualChild(int index) => Visual;
     }
 }
