@@ -42,8 +42,8 @@ public sealed class HudOptions
     /// </summary>
     public string? DecisionMarkerDir { get; set; }
 
-    /// <summary>Most sessions shown at once (most recently active first).</summary>
-    public int MaxSessions { get; set; } = 12;
+    /// <summary>Most sessions shown without a running process (newest first); live sessions are never cut.</summary>
+    public int MaxSessions { get; set; } = 30;
 
     /// <summary>
     /// Sessions not in today's registry are shown while their transcript changed within this

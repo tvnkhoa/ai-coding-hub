@@ -21,7 +21,8 @@ namespace AiCodingHub.Infrastructure.Claude;
 /// <para>
 /// Which sessions: today's sessions in the handover registry (while their process runs, plus
 /// <c>EndedHideMinutes</c> after it exits) and any other transcript written within
-/// <c>ActiveWindowMinutes</c>, capped at <c>MaxSessions</c>. The file system is re-scanned every
+/// <c>ActiveWindowMinutes</c>. <c>MaxSessions</c> caps only sessions without a running process;
+/// a live one is never cut. The file system is re-scanned every
 /// <see cref="DiscoveryInterval"/>; tracked files are tailed on every poll.
 /// </para>
 /// Called from a single background loop, so instance state is not synchronized. Never throws.
@@ -132,7 +133,10 @@ public sealed class ClaudeProvider : IClaudeProvider
         var endedHide = TimeSpan.FromMinutes(Math.Max(0, opts.EndedHideMinutes));
         var nowUtc = now.UtcDateTime;
 
-        var wanted = SessionLocator.EnumerateSessions(root)
+        // Sessions missing from the registry have no pid: match them to running claude.exe instead.
+        _claudeProcesses = processes.Claude;
+
+        var candidates = SessionLocator.EnumerateSessions(root)
             .Where(f =>
             {
                 var age = nowUtc - f.LastWriteUtc;
@@ -145,11 +149,15 @@ public sealed class ClaudeProvider : IClaudeProvider
                 return age <= activeWindow;
             })
             .OrderByDescending(f => f.LastWriteUtc)
-            .Take(Math.Max(1, opts.MaxSessions))
             .ToList();
 
-        // Sessions missing from the registry have no pid: match them to running claude.exe instead.
-        _claudeProcesses = processes.Claude;
+        // A session whose process runs is never cut; MaxSessions caps the rest (ended, or recent
+        // without a known process), newest first, in the slots the live ones leave.
+        var byLive = candidates.ToLookup(IsLive);
+        var live = byLive[true].ToList();
+        var wanted = live
+            .Concat(byLive[false].Take(Math.Max(0, Math.Max(1, opts.MaxSessions) - live.Count)))
+            .ToList();
 
         var keep = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var file in wanted)
@@ -169,6 +177,56 @@ public sealed class ClaudeProvider : IClaudeProvider
         {
             _trackers.Remove(gone);
         }
+    }
+
+    /// <summary>
+    /// The session's process runs: its registered pid is alive, or (unregistered) a claude.exe
+    /// names its id, or a bare claude.exe runs in the cwd its project folder encodes. Cheap: no
+    /// transcript parse; used only to exempt live sessions from <c>MaxSessions</c>.
+    /// </summary>
+    private bool IsLive(SessionFile file)
+    {
+        if (_registered.TryGetValue(file.SessionId, out var reg))
+        {
+            return reg.Pid is { } pid && _alive.GetValueOrDefault(pid, true);
+        }
+
+        if (_claudeProcesses is null)
+        {
+            return false;
+        }
+
+        foreach (var p in _claudeProcesses)
+        {
+            if (p.CommandLine is { } cl && ClaimsSession.Match(cl) is { Success: true } claim)
+            {
+                if (string.Equals(claim.Groups["id"].Value, file.SessionId, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+            else if (!string.IsNullOrWhiteSpace(p.Cwd)
+                && string.Equals(EncodeProjectDir(WorktreeRepoResolver.NormalizePath(p.Cwd)), file.ProjectDir,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>Claude Code's project folder name for a cwd: every non-alphanumeric char becomes '-'.</summary>
+    private static string EncodeProjectDir(string cwd)
+    {
+        var chars = cwd.ToCharArray();
+        for (var i = 0; i < chars.Length; i++)
+        {
+            if (!char.IsAsciiLetterOrDigit(chars[i]))
+            {
+                chars[i] = '-';
+            }
+        }
+        return new string(chars);
     }
 
     /// <summary>
