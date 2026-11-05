@@ -181,7 +181,9 @@ public static class RaceTrack
             }
             _color = race.Color;
             _carGlow.Color = race.Color;
-            _corePens = MakePens(race.Color, TrailThickness, 1, PenLineCap.Round);
+            _corePens = MakePens(race.Color, TrailThickness, 1, PenLineCap.Flat);
+            // Flat caps on both: bands share their join point, and round caps would overlap there and
+            // double the alpha into a dark dot at every seam.
             _glowPens = MakePens(race.Color, GlowThickness, GlowAlpha, PenLineCap.Flat);
         }
 
