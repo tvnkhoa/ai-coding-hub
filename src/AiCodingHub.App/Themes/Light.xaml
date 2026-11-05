@@ -2,21 +2,21 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- Light theme tokens (see Dark.xaml for the meaning of each key). -->
-    <SolidColorBrush x:Key="Hud.Background"            Color="#FAF1F2F5" />
-    <SolidColorBrush x:Key="Hud.Background.Backdrop"   Color="#FAF1F2F5" />
+    <SolidColorBrush x:Key="Hud.Background"            Color="#FDF8F9FB" />
+    <SolidColorBrush x:Key="Hud.Background.Backdrop"   Color="#FDF8F9FB" />
     <SolidColorBrush x:Key="Hud.Header.Background"     Color="#00000000" />
     <SolidColorBrush x:Key="Hud.Header.Hover"          Color="#14000000" />
     <SolidColorBrush x:Key="Hud.Footer.Background"     Color="#FFFFFFFF" />
     <SolidColorBrush x:Key="Hud.Card"                  Color="#FFFFFFFF" />
-    <SolidColorBrush x:Key="Hud.Card.Border"           Color="#FFDADCE2" />
-    <SolidColorBrush x:Key="Hud.Card.Hover"            Color="#FFF3F5F8" />
-    <SolidColorBrush x:Key="Hud.Row.Focus"             Color="#FFEEF1F6" />
-    <SolidColorBrush x:Key="Hud.Border"                Color="#FFCDD0D7" />
-    <SolidColorBrush x:Key="Hud.Divider"               Color="#FFDADCE2" />
+    <SolidColorBrush x:Key="Hud.Card.Border"           Color="#FFE0E3E8" />
+    <SolidColorBrush x:Key="Hud.Card.Hover"            Color="#FFF5F7FA" />
+    <SolidColorBrush x:Key="Hud.Row.Focus"             Color="#FFF0F3F8" />
+    <SolidColorBrush x:Key="Hud.Border"                Color="#FFD9DCE2" />
+    <SolidColorBrush x:Key="Hud.Divider"               Color="#FFE6E8EC" />
     <SolidColorBrush x:Key="Hud.Foreground"            Color="#FF15161A" />
     <SolidColorBrush x:Key="Hud.Foreground.Subtle"     Color="#FF464851" />
     <SolidColorBrush x:Key="Hud.Foreground.Muted"      Color="#FF5F616B" />
-    <SolidColorBrush x:Key="Hud.Track"                 Color="#FFE3E5EA" />
+    <SolidColorBrush x:Key="Hud.Track"                 Color="#FFE9EBEF" />
     <SolidColorBrush x:Key="Hud.Tick"                  Color="#FF9A9DA6" />
     <SolidColorBrush x:Key="Hud.Leader"                Color="#FFB7791F" />
 
