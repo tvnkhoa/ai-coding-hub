@@ -43,6 +43,52 @@ public partial class OverlayWindow : Window
 
         Loaded += OnLoaded;
         Closing += OnClosing;
+        LocationChanged += (_, _) => UpdateMaxHeight();
+    }
+
+    // The XAML MaxHeight is the upper cap; below it the window may not run past the bottom of the
+    // work area of the monitor it sits on, so the footer stays visible and the list scrolls.
+    private const double HeightCap = 860;
+    private const double BottomMargin = 8;
+    private const int WmSettingChange = 0x001A, WmDisplayChange = 0x007E, SpiSetWorkArea = 0x002F;
+
+    private void UpdateMaxHeight()
+    {
+        if (_hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        try
+        {
+            var scale = VisualTreeHelper.GetDpi(this).DpiScaleY;
+            var workBottom = System.Windows.Forms.Screen.FromHandle(_hwnd).WorkingArea.Bottom / scale;
+            var max = Math.Clamp(workBottom - Top - BottomMargin, MinHeight, HeightCap);
+            if (Math.Abs(MaxHeight - max) > 0.5)
+            {
+                MaxHeight = max;
+            }
+        }
+        catch (Exception)
+        {
+            // Best-effort: keep the current cap.
+        }
+    }
+
+    private IntPtr OnWindowMessage(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg == WmDisplayChange || (msg == WmSettingChange && wParam.ToInt64() == SpiSetWorkArea))
+        {
+            Dispatcher.BeginInvoke(UpdateMaxHeight, System.Windows.Threading.DispatcherPriority.Background);
+        }
+
+        return IntPtr.Zero;
+    }
+
+    protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
+    {
+        base.OnDpiChanged(oldDpi, newDpi);
+        Dispatcher.BeginInvoke(UpdateMaxHeight, System.Windows.Threading.DispatcherPriority.Background);
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -58,6 +104,8 @@ public partial class OverlayWindow : Window
         {
             target.BackgroundColor = Colors.Transparent;
         }
+
+        HwndSource.FromHwnd(_hwnd)?.AddHook(OnWindowMessage);
 
         _vm.UseBackdrop = WindowInterop.TryEnableBackdrop(_hwnd, dark: !_theme.IsLight);
         _theme.ThemeChanged += isLight => WindowInterop.SetDarkMode(_hwnd, !isLight);
@@ -75,6 +123,8 @@ public partial class OverlayWindow : Window
             Left = left;
             Top = top;
         }
+
+        UpdateMaxHeight();
     }
 
     private void OnClosing(object? sender, CancelEventArgs e)
