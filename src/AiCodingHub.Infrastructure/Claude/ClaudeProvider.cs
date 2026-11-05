@@ -296,7 +296,7 @@ public sealed class ClaudeProvider : IClaudeProvider
             else
             {
                 var (alive, matched) = MatchProcess(_claudeProcesses, tracker.File.SessionId, snap.Session.Workspace,
-                    snap.Session.StartedAt, TrackedLastWrite);
+                    snap.Session.StartedAt, TrackedLastWrite, snap.Session.CurrentCwd);
                 pid = matched;
                 ended = alive == false;
                 if (ended && !(endedHide > TimeSpan.Zero && now - lastWrite <= endedHide))
@@ -396,7 +396,8 @@ public sealed class ClaudeProvider : IClaudeProvider
 
     /// <summary>
     /// Liveness of a session missing from the registry: a claude.exe whose command line names the
-    /// session id, else one that names no session (a bare <c>claude</c>) running in the same cwd.
+    /// session id, else one that names no session (a bare <c>claude</c>) running in the same cwd
+    /// (the transcript's first or <paramref name="currentCwd"/>, its latest).
     /// Last, a same-cwd process naming another session X that X no longer accounts for (X is not
     /// tracked, or its transcript was last written before this session started): <c>claude --resume X</c>
     /// then <c>/clear</c> keeps X on the command line while writing the new session.
@@ -408,7 +409,8 @@ public sealed class ClaudeProvider : IClaudeProvider
         string sessionId,
         string? cwd,
         DateTimeOffset? startedAt = null,
-        Func<string, DateTimeOffset?>? trackedLastWrite = null)
+        Func<string, DateTimeOffset?>? trackedLastWrite = null,
+        string? currentCwd = null)
     {
         if (processes is null)
         {
@@ -434,7 +436,9 @@ public sealed class ClaudeProvider : IClaudeProvider
                 continue;
             }
 
-            if (!SamePath(p.Cwd, cwd))
+            // First cwd or latest: EnterWorktree chdirs claude.exe into the worktree, and the PEB
+            // cwd is cached, so the process may report either.
+            if (!SamePath(p.Cwd, cwd) && !SamePath(p.Cwd, currentCwd))
             {
                 continue;
             }

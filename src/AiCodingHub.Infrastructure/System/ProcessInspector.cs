@@ -50,7 +50,9 @@ public sealed record ProcessSnapshot(
 /// <summary>
 /// claude.exe command line + cwd by (pid, creation time): the PEB is read once per process, and a
 /// reused pid (new creation time) is read again. Pids missing from a pass are evicted. Thread-safe.
-/// The cwd is cached too: a live check (4 Nov) found claude.exe keeps its start cwd.
+/// The cwd is cached too, so it may be stale: claude.exe keeps its start cwd except after
+/// EnterWorktree, which chdirs it into the worktree (5 Nov probe). Callers match a process
+/// against both the transcript's first and latest cwd, which covers either reading.
 /// </summary>
 public sealed class ProcessParameterCache
 {

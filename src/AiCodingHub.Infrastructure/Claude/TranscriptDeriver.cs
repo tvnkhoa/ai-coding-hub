@@ -23,7 +23,7 @@ public sealed class SessionAccumulator
     private readonly Dictionary<string, (PendingQuestion Question, DateTimeOffset? At)> _pending = new(StringComparer.Ordinal);
     private string? _name;
 
-    private string? _model, _cwd, _branch, _version;
+    private string? _model, _cwd, _currentCwd, _branch, _version;
     private DateTimeOffset? _first, _last;
     private UsageTokens? _lastAssistantUsage;
     private TranscriptEvent? _lastEvent;
@@ -73,6 +73,7 @@ public sealed class SessionAccumulator
         }
 
         _cwd ??= ev.Cwd; // the launch folder names the project; later `cd`s do not
+        if (ev.Cwd is not null) _currentCwd = ev.Cwd; // EnterWorktree moves the session (and claude.exe) here
         if (ev.GitBranch is not null) _branch = ev.GitBranch;
         if (ev.Version is not null) _version = ev.Version;
 
@@ -148,7 +149,8 @@ public sealed class SessionAccumulator
             ClaudeVersion: _version ?? "—",
             StartedAt: _first,
             Duration: duration,
-            Branch: string.IsNullOrEmpty(_branch) ? "—" : _branch!);
+            Branch: string.IsNullOrEmpty(_branch) ? "—" : _branch!,
+            CurrentCwd: _currentCwd);
 
         var avgLatency = _latencyCount > 0 ? _latencySum / _latencyCount : 0;
         var avgTokens = _assistantWithUsage > 0 ? (double)_outputTokenSum / _assistantWithUsage : 0;

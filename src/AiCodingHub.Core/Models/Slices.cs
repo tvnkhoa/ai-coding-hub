@@ -2,7 +2,11 @@ using System;
 
 namespace AiCodingHub.Core.Models;
 
-/// <summary>Session identity + timing (FR-1).</summary>
+/// <summary>
+/// Session identity + timing (FR-1). <see cref="Workspace"/> is the launch folder (names the
+/// project); <see cref="CurrentCwd"/> is the newest line's cwd, which differs after EnterWorktree
+/// moves the session (and its claude.exe) into a worktree. Null when no line had a cwd.
+/// </summary>
 public sealed record SessionInfo(
     string Model,
     string Workspace,
@@ -10,7 +14,8 @@ public sealed record SessionInfo(
     string ClaudeVersion,
     DateTimeOffset? StartedAt,
     TimeSpan Duration,
-    string Branch)
+    string Branch,
+    string? CurrentCwd = null)
 {
     public static SessionInfo Empty { get; } =
         new("—", "", "—", "—", null, TimeSpan.Zero, "—");
