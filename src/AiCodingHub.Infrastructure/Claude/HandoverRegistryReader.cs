@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using AiCodingHub.Core.Models;
 
 namespace AiCodingHub.Infrastructure.Claude;
@@ -87,22 +89,73 @@ public sealed class HandoverRegistryReader
     private void Reload()
     {
         var path = Path.Combine(_dir, ".sessions.jsonl");
-        if (!File.Exists(path))
+        var trimming = TrimmingFiles();
+        var exists = File.Exists(path);
+        if (!exists && trimming.Count == 0)
         {
             _entries = new List<RawEntry>();
+            _registryWrite = DateTime.MinValue;
+            _registryLength = -1;
             return;
         }
 
-        var info = new FileInfo(path);
-        if (info.LastWriteTimeUtc == _registryWrite && info.Length == _registryLength)
+        // While a hook trim runs, old rows sit in a `.trimming` side file: never serve the cache then.
+        FileInfo? info = exists ? new FileInfo(path) : null;
+        if (trimming.Count == 0 && info is not null
+            && info.LastWriteTimeUtc == _registryWrite && info.Length == _registryLength)
         {
             return;
         }
 
+        // The hook's own order: registry, the .trimming files, registry again — a trim renames, appends
+        // the kept rows back, then deletes the side file, so every row is in one of the three reads.
         var entries = new List<RawEntry>();
-        using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
-        using (var reader = new StreamReader(fs))
+        ReadInto(path, entries);
+        foreach (var t in trimming)
         {
+            ReadInto(t, entries);
+        }
+
+        ReadInto(path, entries);
+
+        _entries = entries;
+        if (trimming.Count == 0 && info is not null)
+        {
+            _registryWrite = info.LastWriteTimeUtc;
+            _registryLength = info.Length;
+        }
+        else
+        {
+            _registryWrite = DateTime.MinValue;
+            _registryLength = -1;
+        }
+    }
+
+    private List<string> TrimmingFiles()
+    {
+        try
+        {
+            return Directory.GetFiles(_dir, ".sessions.jsonl.*.trimming")
+                .Where(f => TrimmingName.IsMatch(Path.GetFileName(f)))
+                .ToList();
+        }
+        catch (IOException)
+        {
+            return new List<string>();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return new List<string>();
+        }
+    }
+
+    /// <summary>Appends the parsed rows of a file; a file that vanished or is locked mid-read adds nothing.</summary>
+    private static void ReadInto(string path, List<RawEntry> entries)
+    {
+        try
+        {
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var reader = new StreamReader(fs);
             string? line;
             while ((line = reader.ReadLine()) is not null)
             {
@@ -112,11 +165,15 @@ public sealed class HandoverRegistryReader
                 }
             }
         }
-
-        _entries = entries;
-        _registryWrite = info.LastWriteTimeUtc;
-        _registryLength = info.Length;
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
     }
+
+    private static readonly Regex TrimmingName = new(@"^\.sessions\.jsonl\.\d+\.trimming$", RegexOptions.Compiled);
 
     private string? ReadLeader(string day, string repo)
     {
