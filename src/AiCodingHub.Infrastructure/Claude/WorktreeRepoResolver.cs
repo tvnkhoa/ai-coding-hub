@@ -1,6 +1,10 @@
 using System;
+using System.Collections.Concurrent;
 using System.IO;
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.RegularExpressions;
+using Microsoft.Win32.SafeHandles;
 
 namespace AiCodingHub.Infrastructure.Claude;
 
@@ -29,7 +33,7 @@ public static class WorktreeRepoResolver
 
         try
         {
-            var full = NormalizePath(cwd);
+            var full = CanonicalPath(cwd);
             // A disconnected share can block Directory.Exists for seconds: name it from the folder only.
             if (!IsNetworkPath(full) && Directory.Exists(full))
             {
@@ -53,7 +57,7 @@ public static class WorktreeRepoResolver
 
     /// <summary>
     /// Full path without a <c>\\?\</c> prefix (<c>\\?\UNC\s\x</c> → <c>\\s\x</c>), backslashes, no
-    /// trailing separator. 8.3 names, subst drives and junctions are not resolved. Never throws.
+    /// trailing separator. String only: aliases are resolved by <see cref="CanonicalPath"/>. Never throws.
     /// </summary>
     public static string NormalizePath(string path)
     {
@@ -79,6 +83,98 @@ public static class WorktreeRepoResolver
         var root = Path.GetPathRoot(p) ?? "";
         return p.Length > root.Length ? p.TrimEnd('\\') : p;
     }
+
+    /// <summary>
+    /// <see cref="NormalizePath"/>, then the same directory under its one real name: 8.3 short
+    /// names expanded, subst drives, junctions and symlinks followed to their target. A network
+    /// path is never probed; a path that cannot be opened falls back to its long name, then to
+    /// the string normalisation. Resolved paths are cached per input (bounded). Never throws.
+    /// </summary>
+    public static string CanonicalPath(string path)
+    {
+        if (Canonical.TryGetValue(path, out var cached))
+        {
+            return cached;
+        }
+
+        var normal = NormalizePath(path);
+        if (IsNetworkPath(normal))
+        {
+            return normal;
+        }
+
+        string? resolved = null;
+        try
+        {
+            resolved = FinalPath(normal) ?? LongPath(normal);
+        }
+        catch (Exception)
+        {
+            // fall back to the string form
+        }
+
+        if (resolved is null)
+        {
+            return normal; // not cached: the directory may appear later
+        }
+
+        resolved = NormalizePath(resolved);
+        if (Canonical.Count >= CanonicalCacheLimit)
+        {
+            Canonical.Clear();
+        }
+        Canonical[path] = resolved;
+        return resolved;
+    }
+
+    private const int CanonicalCacheLimit = 512;
+    private static readonly ConcurrentDictionary<string, string> Canonical = new(StringComparer.Ordinal);
+
+    /// <summary>Final path of an existing file or directory, following subst, junctions and symlinks.</summary>
+    private static string? FinalPath(string path)
+    {
+        using var handle = CreateFileW(path, 0, FileShareAll, IntPtr.Zero, OpenExisting, FileFlagBackupSemantics, IntPtr.Zero);
+        if (handle.IsInvalid)
+        {
+            return null;
+        }
+
+        var buffer = new StringBuilder(512);
+        var length = GetFinalPathNameByHandleW(handle, buffer, (uint)buffer.Capacity, 0);
+        if (length >= buffer.Capacity)
+        {
+            buffer = new StringBuilder((int)length + 1);
+            length = GetFinalPathNameByHandleW(handle, buffer, (uint)buffer.Capacity, 0);
+        }
+        return length == 0 || length >= buffer.Capacity ? null : buffer.ToString(0, (int)length);
+    }
+
+    /// <summary>Long-name form of an existing path (8.3 expanded), or null.</summary>
+    private static string? LongPath(string path)
+    {
+        var buffer = new StringBuilder(512);
+        var length = GetLongPathNameW(path, buffer, (uint)buffer.Capacity);
+        if (length >= buffer.Capacity)
+        {
+            buffer = new StringBuilder((int)length + 1);
+            length = GetLongPathNameW(path, buffer, (uint)buffer.Capacity);
+        }
+        return length == 0 || length >= buffer.Capacity ? null : buffer.ToString(0, (int)length);
+    }
+
+    private const uint FileShareAll = 0x7; // read | write | delete
+    private const uint OpenExisting = 3;
+    private const uint FileFlagBackupSemantics = 0x02000000; // needed to open a directory
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern SafeFileHandle CreateFileW(string fileName, uint access, uint share, IntPtr security,
+        uint creation, uint flags, IntPtr template);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern uint GetFinalPathNameByHandleW(SafeFileHandle file, StringBuilder path, uint length, uint flags);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern uint GetLongPathNameW(string shortPath, StringBuilder longPath, uint length);
 
     /// <summary>
     /// True for a UNC path or a drive mapped to a network share: the file system is not probed

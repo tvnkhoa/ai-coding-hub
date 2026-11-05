@@ -427,8 +427,8 @@ public sealed class ClaudeProvider : IClaudeProvider
             return false;
         }
 
-        // 8.3 short names, subst drives and junctions are not resolved.
-        return string.Equals(WorktreeRepoResolver.NormalizePath(a), WorktreeRepoResolver.NormalizePath(b),
+        // Canonical: 8.3 short names, subst drives and junctions name the same directory.
+        return string.Equals(WorktreeRepoResolver.CanonicalPath(a), WorktreeRepoResolver.CanonicalPath(b),
             StringComparison.OrdinalIgnoreCase);
     }
 
