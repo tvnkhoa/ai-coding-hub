@@ -185,6 +185,7 @@ public sealed partial class SessionRowViewModel : ObservableObject, IKeyed
     [ObservableProperty] private bool _isLeader;
     [ObservableProperty] private string _displayName = "";
     [ObservableProperty] private string _modelLabel = "—";
+    [ObservableProperty] private string _effortText = "";
     [ObservableProperty] private double _fraction;
     [ObservableProperty] private string _percentText = "0%";
     [ObservableProperty] private int _level;
@@ -224,6 +225,7 @@ public sealed partial class SessionRowViewModel : ObservableObject, IKeyed
         IsLeader = s.Role == SessionRole.Leader;
         DisplayName = s.DisplayName;
         ModelLabel = s.ModelLabel;
+        EffortText = string.IsNullOrWhiteSpace(s.Effort) ? "" : s.Effort!;
         Fraction = s.ContextPercent / 100.0;
         PercentText = $"{s.ContextPercent:0}%";
         Level = SessionsWidgetViewModel.Level(s.ContextPercent, opts);
@@ -236,7 +238,7 @@ public sealed partial class SessionRowViewModel : ObservableObject, IKeyed
         {
             $"{s.DisplayName} · {role}",
             $"{s.SessionId}",
-            $"{s.Model}",
+            string.IsNullOrWhiteSpace(s.Effort) ? $"{s.Model}" : $"{s.Model} · effort {s.Effort}",
             $"Context {SessionsWidgetViewModel.Tokens(s.ContextTokens)} / {SessionsWidgetViewModel.Tokens(s.MaxTokens)} ({s.ContextPercent:0.0}%)",
             $"Cost {SessionsWidgetViewModel.Money(s.SessionCostUsd)} · {s.Requests} requests",
         };

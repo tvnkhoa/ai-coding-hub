@@ -119,9 +119,15 @@
                                Foreground="{DynamicResource Hud.Foreground.Muted}" Margin="0,-1,0,0" />
                 </StackPanel>
 
-                <TextBlock Grid.Column="2" Text="{Binding ModelLabel}" FontSize="10.5"
-                           Foreground="{DynamicResource Hud.Foreground.Subtle}" VerticalAlignment="Center"
-                           TextTrimming="CharacterEllipsis" />
+                <!-- Model, reasoning effort below (hidden until the session has replied) -->
+                <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding ModelLabel}" FontSize="10.5"
+                               Foreground="{DynamicResource Hud.Foreground.Subtle}"
+                               TextTrimming="CharacterEllipsis" />
+                    <TextBlock x:Name="Effort" Text="{Binding EffortText}" FontSize="9.5" Margin="0,-1,0,0"
+                               Foreground="{DynamicResource Hud.Foreground.Muted}"
+                               TextTrimming="CharacterEllipsis" />
+                </StackPanel>
 
                 <!-- Context bar with a tick at the warn threshold (80%) -->
                 <Grid Grid.Column="3" Height="10" VerticalAlignment="Center">
@@ -153,6 +159,9 @@
         <DataTemplate.Triggers>
             <DataTrigger Binding="{Binding IsLeader}" Value="True">
                 <Setter TargetName="Star" Property="Visibility" Value="Visible" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding EffortText}" Value="">
+                <Setter TargetName="Effort" Property="Visibility" Value="Collapsed" />
             </DataTrigger>
             <DataTrigger Binding="{Binding IsFocused}" Value="True">
                 <Setter TargetName="FocusBar" Property="Visibility" Value="Visible" />
