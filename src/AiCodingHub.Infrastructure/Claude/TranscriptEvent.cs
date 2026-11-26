@@ -41,6 +41,10 @@ public sealed record TranscriptEvent
     public string? GitBranch { get; init; }
     public string? Version { get; init; }
 
+    /// <summary>Reasoning effort the turn ran at (top-level <c>effort</c>, else <c>perTurnEffort</c>,
+    /// on assistant lines: <c>low</c> / <c>medium</c> / <c>high</c> / <c>xhigh</c> / <c>max</c>).</summary>
+    public string? Effort { get; init; }
+
     /// <summary>Number of tool_use blocks in an assistant message.</summary>
     public int ToolUseCount { get; init; }
 

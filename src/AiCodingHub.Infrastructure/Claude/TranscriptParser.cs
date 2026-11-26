@@ -35,6 +35,7 @@ public sealed class TranscriptParser
                 GitBranch = ReadString(root, "gitBranch"),
                 Version = ReadString(root, "version"),
                 RequestId = ReadString(root, "requestId"),
+                Effort = ReadString(root, "effort") ?? ReadString(root, "perTurnEffort"),
             };
 
             var recordType = ReadString(root, "type");

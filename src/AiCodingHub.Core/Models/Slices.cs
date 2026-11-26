@@ -15,7 +15,8 @@ public sealed record SessionInfo(
     DateTimeOffset? StartedAt,
     TimeSpan Duration,
     string Branch,
-    string? CurrentCwd = null)
+    string? CurrentCwd = null,
+    string? Effort = null)
 {
     public static SessionInfo Empty { get; } =
         new("—", "", "—", "—", null, TimeSpan.Zero, "—");

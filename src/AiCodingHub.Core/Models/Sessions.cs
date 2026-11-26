@@ -45,7 +45,8 @@ public sealed record SessionSummary(
     bool IsFocused,
     SessionActivity Activity,
     string? Name = null,
-    DecisionRequest? Decision = null)
+    DecisionRequest? Decision = null,
+    string? Effort = null)
 {
     /// <summary>
     /// What the dashboard shows: the launcher-given name (<c>agent-name</c>), else "Leader" for a

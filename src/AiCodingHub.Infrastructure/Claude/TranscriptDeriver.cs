@@ -23,7 +23,7 @@ public sealed class SessionAccumulator
     private readonly Dictionary<string, (PendingQuestion Question, DateTimeOffset? At)> _pending = new(StringComparer.Ordinal);
     private string? _name;
 
-    private string? _model, _cwd, _currentCwd, _branch, _version;
+    private string? _model, _cwd, _currentCwd, _branch, _version, _effort;
     private DateTimeOffset? _first, _last;
     private UsageTokens? _lastAssistantUsage;
     private TranscriptEvent? _lastEvent;
@@ -90,6 +90,7 @@ public sealed class SessionAccumulator
             case EventRole.Assistant:
                 _toolCalls += ev.ToolUseCount;
                 if (ev.Model is not null) _model = ev.Model;
+                if (!string.IsNullOrWhiteSpace(ev.Effort)) _effort = ev.Effort; // `/effort` changes it mid-session
 
                 // A repeated line of an already-counted response adds nothing but tool calls.
                 var key = ev.ResponseKey;
@@ -150,7 +151,8 @@ public sealed class SessionAccumulator
             StartedAt: _first,
             Duration: duration,
             Branch: string.IsNullOrEmpty(_branch) ? "—" : _branch!,
-            CurrentCwd: _currentCwd);
+            CurrentCwd: _currentCwd,
+            Effort: _effort);
 
         var avgLatency = _latencyCount > 0 ? _latencySum / _latencyCount : 0;
         var avgTokens = _assistantWithUsage > 0 ? (double)_outputTokenSum / _assistantWithUsage : 0;

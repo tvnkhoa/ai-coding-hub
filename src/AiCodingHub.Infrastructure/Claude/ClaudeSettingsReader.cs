@@ -24,6 +24,7 @@ public sealed class ClaudeSettingsReader
     private DateTime _lastWrite = DateTime.MinValue;
     private bool _largeContext;
     private string? _modelAlias;
+    private string? _effortLevel;
     private bool _loaded;
 
     private static readonly string[] Families = { "opus", "sonnet", "haiku", "fable", "mythos" };
@@ -64,6 +65,11 @@ public sealed class ClaudeSettingsReader
                 _modelAlias = null;
                 _largeContext = false;
             }
+
+            _effortLevel = doc.RootElement.TryGetProperty("effortLevel", out var e) && e.ValueKind == JsonValueKind.String
+                && !string.IsNullOrWhiteSpace(e.GetString())
+                ? e.GetString()!.Trim().ToLowerInvariant()
+                : null;
         }
         catch
         {
@@ -71,6 +77,13 @@ public sealed class ClaudeSettingsReader
         }
 
         return _largeContext;
+    }
+
+    /// <summary>The default reasoning effort (<c>effortLevel</c>), or null when unset.</summary>
+    public string? EffortLevel()
+    {
+        IsLargeContext(); // re-parses only when the file changed
+        return _effortLevel;
     }
 
     /// <summary>

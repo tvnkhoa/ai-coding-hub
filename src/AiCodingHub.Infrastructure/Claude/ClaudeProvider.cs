@@ -339,7 +339,9 @@ public sealed class ClaudeProvider : IClaudeProvider
                 Name: snap.Name,
                 // A session whose process exited is not waiting on anyone any more.
                 Decision: activity == SessionActivity.Ended ? null
-                    : snap.PendingDecision ?? FromMarker(markers, tracker));
+                    : snap.PendingDecision ?? FromMarker(markers, tracker),
+                // The transcript names the effort of each turn; before the first reply, the default.
+                Effort: snap.Session.Effort ?? _settings.EffortLevel());
 
             rows.Add((summary, snap));
         }
