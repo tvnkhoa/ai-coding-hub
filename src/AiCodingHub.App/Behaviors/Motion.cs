@@ -16,7 +16,9 @@ public static class Motion
     private static readonly IEasingFunction Ease = Freeze(new CubicEase { EasingMode = EasingMode.EaseOut });
 
     public static readonly DependencyProperty ScaleXProperty = DependencyProperty.RegisterAttached(
-        "ScaleX", typeof(double), typeof(Motion), new PropertyMetadata(0.0, OnScaleXChanged));
+        "ScaleX", typeof(double), typeof(Motion), new PropertyMetadata(double.NaN, OnScaleXChanged)); // NaN default so a first bound 0 still raises a change
+
+    // (an unset property reads NaN; GetScaleX callers should not rely on it)
 
     public static double GetScaleX(DependencyObject d) => (double)d.GetValue(ScaleXProperty);
 
@@ -29,7 +31,8 @@ public static class Motion
             return;
         }
 
-        var target = Math.Clamp((double)e.NewValue, 0, 1);
+        var raw = (double)e.NewValue;
+        var target = double.IsNaN(raw) ? 0 : Math.Clamp(raw, 0, 1);
         if (element.RenderTransform is not ScaleTransform scale || scale.IsFrozen)
         {
             scale = new ScaleTransform(target, 1);
