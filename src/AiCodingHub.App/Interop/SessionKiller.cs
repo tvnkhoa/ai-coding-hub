@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Windows;
+using System.Windows.Threading;
 using Serilog;
 
 namespace AiCodingHub.App.Interop;
@@ -13,7 +14,21 @@ namespace AiCodingHub.App.Interop;
 /// </summary>
 public static class SessionKiller
 {
-    public static bool ConfirmAndKill(int pid, string repo, string shortId, string displayName)
+    /// <summary>
+    /// Called from the row's context-menu click. The dialog is posted, not shown inline: a modal
+    /// opened while the ContextMenu is still closing (menu mode, mouse capture) is dismissed at once.
+    /// </summary>
+    public static void ConfirmAndKill(int pid, string repo, string shortId, string displayName)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null)
+        {
+            return;
+        }
+        dispatcher.BeginInvoke(() => Confirm(pid, repo, shortId, displayName), DispatcherPriority.ApplicationIdle);
+    }
+
+    private static void Confirm(int pid, string repo, string shortId, string displayName)
     {
         var text = $"Kill session {shortId} ({displayName}) in {repo}?{Environment.NewLine}{Environment.NewLine}"
                  + $"This ends claude.exe (PID {pid}) and every process it started. Unsaved work in that session is lost.";
@@ -21,11 +36,11 @@ public static class SessionKiller
         var answer = owner is { IsVisible: true }
             ? MessageBox.Show(owner, text, "Kill session", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No)
             : MessageBox.Show(text, "Kill session", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
-        if (answer != MessageBoxResult.Yes)
+        Log.Information("Kill session {Repo}/{Session} (pid {Pid}): confirmation answered {Answer}", repo, shortId, pid, answer);
+        if (answer == MessageBoxResult.Yes)
         {
-            return false;
+            Kill(pid, repo, shortId);
         }
-        return Kill(pid, repo, shortId);
     }
 
     public static bool Kill(int pid, string repo, string shortId)
