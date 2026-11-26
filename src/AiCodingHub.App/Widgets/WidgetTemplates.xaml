@@ -86,6 +86,11 @@
             <Border.InputBindings>
                 <MouseBinding Gesture="LeftDoubleClick" Command="{Binding OpenCommand}" />
             </Border.InputBindings>
+            <Border.ContextMenu>
+                <ContextMenu Style="{StaticResource Hud.ContextMenu}">
+                    <MenuItem Header="Kill session" Command="{Binding KillCommand}" Style="{StaticResource Hud.MenuItem.Danger}" />
+                </ContextMenu>
+            </Border.ContextMenu>
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="16" />

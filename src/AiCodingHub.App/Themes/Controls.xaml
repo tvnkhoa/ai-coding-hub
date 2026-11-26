@@ -132,4 +132,44 @@
         </Setter>
     </Style>
 
+    <!-- Right-click menu on a session row (themed popup, token colours only) -->
+    <Style x:Key="Hud.ContextMenu" TargetType="ContextMenu">
+        <Setter Property="Foreground" Value="{DynamicResource Hud.Foreground}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="HasDropShadow" Value="False" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ContextMenu">
+                    <Border Background="{DynamicResource Hud.Background}" BorderBrush="{DynamicResource Hud.Border}"
+                            BorderThickness="1" CornerRadius="6" Padding="3">
+                        <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- A destructive menu entry: red text, card-hover highlight -->
+    <Style x:Key="Hud.MenuItem.Danger" TargetType="MenuItem">
+        <Setter Property="Foreground" Value="{DynamicResource Hud.Status.Critical}" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="MenuItem">
+                    <Border x:Name="bg" CornerRadius="4" Padding="10,5" Background="Transparent">
+                        <ContentPresenter ContentSource="Header" RecognizesAccessKey="True" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsHighlighted" Value="True">
+                            <Setter TargetName="bg" Property="Background" Value="{DynamicResource Hud.Header.Hover}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{DynamicResource Hud.Foreground.Muted}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
 </ResourceDictionary>

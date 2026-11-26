@@ -169,6 +169,8 @@ public sealed partial class SessionGroupViewModel : ObservableObject, IKeyed
 public sealed partial class SessionRowViewModel : ObservableObject, IKeyed
 {
     private int? _pid;
+    private string? _workspace;
+    private string _group = "";
 
     public SessionRowViewModel(string sessionId)
     {
@@ -191,19 +193,34 @@ public sealed partial class SessionRowViewModel : ObservableObject, IKeyed
     [ObservableProperty] private bool _needsDecision;
     [ObservableProperty] private string _toolTipText = "";
 
-    /// <summary>Double-click a row: bring its terminal window forward.</summary>
+    /// <summary>Double-click a row: bring its terminal (or its own VS Code window) forward.</summary>
     [RelayCommand]
     private void Open()
     {
         if (_pid is { } pid)
         {
-            WindowActivator.TryFocusSession(pid);
+            WindowActivator.TryFocusSession(pid, _workspace, _group);
         }
     }
 
+    /// <summary>Right-click → Kill session: confirm, then end this session's claude.exe tree.</summary>
+    [RelayCommand(CanExecute = nameof(CanKill))]
+    private void Kill()
+    {
+        if (_pid is { } pid)
+        {
+            SessionKiller.ConfirmAndKill(pid, _group, ShortId, DisplayName);
+        }
+    }
+
+    private bool CanKill() => _pid is not null && Activity != SessionActivity.Ended;
+
     internal void Update(SessionSummary s, AlertOptions opts)
     {
+        var couldKill = CanKill();
         _pid = s.Pid;
+        _workspace = s.Workspace;
+        _group = s.Group;
         IsLeader = s.Role == SessionRole.Leader;
         DisplayName = s.DisplayName;
         ModelLabel = s.ModelLabel;
@@ -236,8 +253,9 @@ public sealed partial class SessionRowViewModel : ObservableObject, IKeyed
         };
         var last = s.LastActivityAt is { } at ? $" · last activity {at.ToLocalTime():HH:mm:ss}" : "";
         lines.Add(s.Pid is { } pid ? $"PID {pid} · {state}{last}" : $"{state}{last}");
-        if (s.Pid is not null) lines.Add("Double-click to open its terminal");
+        if (s.Pid is not null) lines.Add("Double-click to open its terminal · right-click to kill");
         ToolTipText = string.Join(Environment.NewLine, lines);
+        if (CanKill() != couldKill) KillCommand.NotifyCanExecuteChanged();
     }
 }
 
@@ -245,6 +263,8 @@ public sealed partial class SessionRowViewModel : ObservableObject, IKeyed
 public sealed partial class DecisionStripViewModel : ObservableObject, IKeyed
 {
     private int? _pid;
+    private string? _workspace;
+    private string _group = "";
 
     public DecisionStripViewModel(string key) => Key = key;
 
@@ -259,13 +279,15 @@ public sealed partial class DecisionStripViewModel : ObservableObject, IKeyed
     {
         if (_pid is { } pid)
         {
-            WindowActivator.TryFocusSession(pid);
+            WindowActivator.TryFocusSession(pid, _workspace, _group);
         }
     }
 
     internal void Update(string group, SessionSummary s, DateTimeOffset now)
     {
         _pid = s.Pid;
+        _workspace = s.Workspace;
+        _group = group;
         var d = s.Decision!;
         Title = $"{group} · {s.DisplayName} needs you";
         Waited = SessionsWidgetViewModel.Waited(d.Since, now);
