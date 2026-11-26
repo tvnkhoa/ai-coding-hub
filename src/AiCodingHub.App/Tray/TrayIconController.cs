@@ -24,7 +24,7 @@ public sealed class TrayIconController : IDisposable
     private readonly Window _window;
     private readonly IMessenger _messenger;
     private readonly WinForms.NotifyIcon _icon;
-    private int? _notifiedPid;
+    private (int? Pid, string? Workspace, string? Repo) _notified;
 
     public TrayIconController(Window window, IMessenger messenger)
     {
@@ -60,7 +60,7 @@ public sealed class TrayIconController : IDisposable
 
         Post(() =>
         {
-            _notifiedPid = FindPid(alert.Title);
+            _notified = FindSession(alert.Title);
             // Short on purpose: who needs you, no preview of the question.
             _icon.ShowBalloonTip(10_000, alert.Title, "Click to open the terminal.", WinForms.ToolTipIcon.None);
         });
@@ -83,12 +83,12 @@ public sealed class TrayIconController : IDisposable
         });
     }
 
-    /// <summary>The pid of the session an alert title names ("group · name needs your decision").</summary>
-    private int? FindPid(string title)
+    /// <summary>The pid, cwd and repo of the session an alert title names ("group · name needs your decision").</summary>
+    private (int? Pid, string? Workspace, string? Repo) FindSession(string title)
     {
         if (_last is null)
         {
-            return null;
+            return default;
         }
 
         foreach (var g in _last.Groups)
@@ -97,11 +97,11 @@ public sealed class TrayIconController : IDisposable
             {
                 if (s.Decision is not null && title.StartsWith($"{g.Name} · {s.DisplayName} ", StringComparison.Ordinal))
                 {
-                    return s.Pid;
+                    return (s.Pid, s.Workspace, g.Name);
                 }
             }
         }
-        return null;
+        return default;
     }
 
     private void OpenNotifiedSession()
@@ -111,7 +111,7 @@ public sealed class TrayIconController : IDisposable
             _window.Show();
         }
 
-        if (_notifiedPid is not { } pid || !WindowActivator.TryFocusSession(pid))
+        if (_notified.Pid is not { } pid || !WindowActivator.TryFocusSession(pid, _notified.Workspace, _notified.Repo))
         {
             _window.Activate();
         }
